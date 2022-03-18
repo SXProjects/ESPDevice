@@ -1,56 +1,42 @@
-#include <Arduino.h>
-#include <ESP8266WebServer.h>
-#include <WiFiClient.h>
-#include <ESP8266HTTPClient.h>
-#include "ArduinoJson.hpp"
-#include "IOTConnection.hpp"
+#include "Device.hpp"
+#include "HTTPConnection.hpp"
 
-// char const *ssid = "gabe phone";
-// char const *passwd = "08121957";
-
-char const *ssid = "GabeNet2G";
-char const *passwd = "17072003";
-
-unsigned timer_delay = 5000;
-unsigned last_time = 0;
-
-//HTTPClient httpClient;
-//
-//void setupSleepHttpMode()
-//{
-//    httpClient.connect("http://" + ipAddress, port);
-//    httpClient.begin(client, "http://127.0.0.1/" + String(id));
-//
-//    if (httpClient.connected()) {
-//        Serial.println("HTTP connection success");
-//    } else {
-//        Serial.println("HTTP connection error");
-//    }
-//
-//    int code = httpClient.GET();
-//    if (code == 200) {
-//        String json = httpClient.getString();
-//        Serial.println(json);
-//    } else {
-//        Serial.print("GET ERROR ");
-//        Serial.println(code);
-//    }
-//}
-
-void setupWebsocketsMode()
+class NormalMode : public IWorkMode
 {
+public:
+    void onInit(Transmitter &transmitter) override {
+        device.println("onInit");
+    }
 
-}
+    void onRelease(Transmitter &transmitter) override {
+        device.println("onRelease");
+    }
 
-IOTConnection connection;
+    void onReceive(Transmitter &transmitter, const String &parameter, int val) override {
+        transmitter.transmit("SUPERMEGAINDICATOR", 228);
+        device.println("onReceive int");
+    }
+
+    void onReceive(Transmitter &transmitter, const String &parameter, float val) override {
+        transmitter.transmit("SUPERMEGAINDICATOR", 42);
+        device.println("onReceive float");
+    }
+
+    void onReceive(Transmitter &transmitter, const String &parameter, bool val) override {
+        transmitter.transmit("SUPERMEGAINDICATOR", 322);
+        device.println("onReceive bool");
+    }
+
+    void onUpdate(Transmitter &transmitter) override {
+        device.println("onUpdate");
+    }
+};
 
 void setup() {
-    Serial.begin(9600);
-    connection.connect("ESP32_TEST");
+    device.setup<HTTPConnection>("test");
+    device.workMode<NormalMode>("NormalMode");
 }
 
 void loop() {
-    connection.loop();
-    if (millis() - last_time >= timer_delay) {
-    }
+    device.update();
 }

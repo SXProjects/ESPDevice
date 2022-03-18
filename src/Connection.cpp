@@ -1,4 +1,4 @@
-#include "IOTConnection.hpp"
+#include "Connection.hpp"
 #include <EEPROM.h>
 
 unsigned const MAX_MEMORY = 256;
@@ -24,8 +24,8 @@ String readFromMemory(int address) {
     return result;
 }
 
-void IOTConnection::pair(char const *device) {
-    diode.setup(3000);
+void Connection::pair(char const *device) {
+    diode.smoothly(2000);
     pairing = true;
     WiFi.disconnect();
     WiFi.softAP(device, nullptr, 1, 0, 1);
@@ -39,7 +39,6 @@ void IOTConnection::pair(char const *device) {
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
     Serial.println(IP);
-    Serial.println(WiFi.localIP());
     pairServer.onNotFound([this] {
         Serial.println("connected");
         pairServer.send(404, "text/plain", "404: Not found");
@@ -89,57 +88,66 @@ void IOTConnection::pair(char const *device) {
     pairServer.begin();
 }
 
-void IOTConnection::connect(char const *device) {
+void Connection::connect(char const *device, IClient* client) {
+    diode.setup();
     EEPROM.begin(MAX_MEMORY);
+    // если данные о подключении имеются
     if (EEPROM.read(0) != 42) {
         Serial.println("Pairing");
         pair(device);
     } else {
-        String ssid = readFromMemory(1);
-        String password = readFromMemory(ssid.length() + 2);
-        String ip = readFromMemory(ssid.length() + password.length() + 3);
-        int port = readFromMemory(ssid.length() + password.length() + ip.length() + 4).toInt();
-
-        Serial.println("ssid");
-        Serial.println(ssid);
-        Serial.println("password");
-        Serial.println(password);
-        Serial.println("ip");
-        Serial.println(ip);
-        Serial.println("port");
-        Serial.println(port);
-
-        WiFi.begin(ssid, password);
-        Serial.println("Connecting...");
-
-        int i = 1;
-        for (; i <= 5 || WiFi.status() != WL_CONNECTED; ++i) {
-            Serial.println(i);
-            delay(1000);
-        }
-
-        if (i == 5) {
-            Serial.println("WiFi connection error");
-        } else {
-            Serial.println("WiFi connection success");
-        }
-
-        Serial.print("IP address:\t");
-        Serial.println(WiFi.localIP());
+        Serial.println("Connecting to WiFi");
+        client->begin(connectWifi(), wifiClient);
     }
 }
 
-void IOTConnection::loop() {
+void Connection::update() {
     if (pairing) {
         diode.loop();
         pairServer.handleClient();
     } else {
-        if ((WiFi.status() != WL_CONNECTED)) {
-
-            return;
+        if (connected && WiFi.status() != WL_CONNECTED) {
+            connected = false;
+            diode.blink(20);
+        } else if (!connected && WiFi.status() == WL_CONNECTED) {
+            connected = true;
+            diode.on();
         }
     }
-
-
 }
 
+String Connection::connectWifi() {
+    String ssid = readFromMemory(1);
+    String password = readFromMemory(ssid.length() + 2);
+    String ip = readFromMemory(ssid.length() + password.length() + 3);
+    String port = readFromMemory(ssid.length() + password.length() + ip.length() + 4);
+
+    Serial.println("ssid");
+    Serial.println(ssid);
+    Serial.println("password");
+    Serial.println(password);
+    Serial.println("ip");
+    Serial.println(ip);
+    Serial.println("port");
+    Serial.println(port);
+
+    WiFi.begin(ssid, password);
+    Serial.println("Connecting...");
+
+    int i = 1;
+    for (; i <= 5 || WiFi.status() != WL_CONNECTED; ++i) {
+        Serial.println(i);
+        delay(1000);
+    }
+
+    if (i == 5) {
+        Serial.println("WiFi connection error");
+    } else {
+        Serial.println("WiFi connection success");
+    }
+
+    Serial.print("IP address:\t");
+    Serial.println(WiFi.localIP());
+    wifiClient.connect(ip, port.toInt());
+    return ip + ":" + port + "/";
+}
