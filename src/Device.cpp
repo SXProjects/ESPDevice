@@ -211,9 +211,8 @@ bool Device::setup(const String &deviceType, IClient *newClient) {
     Serial.begin(9600);
     client = newClient;
     connection.connect(deviceType.c_str(), client);
-    success("device_wakeup");
     if (connection.isConnected()) {
-
+        success("device_wakeup");
         diode.smoothly(600);
     }
     Serial.println("waiting for configuration");
