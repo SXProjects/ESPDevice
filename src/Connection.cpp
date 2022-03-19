@@ -4,7 +4,7 @@
 unsigned const MAX_MEMORY = 256;
 
 void saveInMemory(String const &s, int address) {
-    for (int i = 0; i < s.length(); ++i) {
+    for (size_t i = 0; i < s.length(); ++i) {
         EEPROM.write(address + i, s[i]);
         Serial.print("Wrote: ");
         Serial.println(s[i]);
@@ -25,13 +25,13 @@ String readFromMemory(int address) {
 }
 
 void Connection::pair(char const *device) {
-    diode.smoothly(2000);
+    diode.smoothly(3000);
     pairing = true;
     WiFi.disconnect();
-    WiFi.softAP(device, nullptr, 1, 0, 1);
+    WiFi.softAP(device, nullptr, 5, 0, 4);
 
-    IPAddress local_ip(192, 168, 4, 1);
-    IPAddress gateway(192, 168, 4, 1);
+    IPAddress local_ip(192, 168, 5, 10);
+    IPAddress gateway(192, 168, 5, 10);
     IPAddress subnet(255, 255, 255, 0);
     WiFi.softAPConfig(local_ip, gateway, subnet);
     delay(100);
@@ -150,4 +150,8 @@ String Connection::connectWifi() {
     Serial.println(WiFi.localIP());
     wifiClient.connect(ip, port.toInt());
     return ip + ":" + port + "/";
+}
+
+bool Connection::isConnected() const {
+    return connected;
 }

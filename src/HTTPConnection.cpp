@@ -22,5 +22,5 @@ bool HTTPConnection::hasCommand() {
 }
 
 bool HTTPConnection::begin(String const &serverPath, WiFiClient &wifiClient) {
-    client.begin(wifiClient, serverPath);
+    return client.begin(wifiClient, serverPath);
 }

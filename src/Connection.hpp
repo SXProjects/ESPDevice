@@ -22,6 +22,8 @@ public:
 
     void update();
 
+    bool isConnected() const;
+
 private:
     String connectWifi();
 

@@ -22,6 +22,7 @@ DataType Device::parseDataType(const String &type) {
     }
     Serial.println("Invalid data type");
     ESP.reset();
+    return DataType(-1);
 }
 
 bool Device::workMode(const String &name, IWorkMode *handler) {
@@ -69,7 +70,7 @@ void Device::deviceTypeInfo(String const &commandName, const DynamicJsonDocument
     }
 
     auto const &wm = json["work_modes"];
-    for (int w = 0; w < wm.size(); ++w) {
+    for (size_t w = 0; w < wm.size(); ++w) {
         WorkModeData data;
         data.name = (char const *) wm[w]["name"];
         data.liveTime = wm[w]["live_time"];
@@ -84,14 +85,14 @@ void Device::deviceTypeInfo(String const &commandName, const DynamicJsonDocument
 
         if (json.containsKey("indicators")) {
             auto const &idc = wm[w]["indicators"];
-            for (int i = 0; i < idc.size(); ++i) {
+            for (size_t i = 0; i < idc.size(); ++i) {
                 data.indicators.push_back({idc[i]["name"], parseDataType(idc[i]["type"])});
             }
         }
 
         if (json.containsKey("parameters")) {
             auto const &idc = wm[w]["parameters"];
-            for (int i = 0; i < idc.size(); ++i) {
+            for (size_t i = 0; i < idc.size(); ++i) {
                 data.parameters.push_back({idc[i]["name"], parseDataType(idc[i]["type"])});
             }
         }
@@ -111,7 +112,7 @@ void Device::transmitData(String const &commandName, const DynamicJsonDocument &
     }
 
     auto const &data = json["data"];
-    for (int i = 0; i < data.size(); ++i) {
+    for (size_t i = 0; i < data.size(); ++i) {
         auto const &val = data[i]["val"];
         String name = data[i]["name"];
         if (val.is<float>()) {
@@ -153,28 +154,44 @@ void Device::setWorkMode(String const &commandName, const DynamicJsonDocument &j
 }
 
 void Device::update() {
+    diode.loop();
     connection.update();
 
-    if (millis() - receiveTime >= currentWorkMode->receiveInterval) {
-        currentWorkMode->receiveInterval = millis();
-        if (client->hasCommand()) {
-            currentWorkMode->receiveInterval = millis();
-            receive(client->command());
+    if (currentWorkMode) {
+        if (!configuring) {
+            diode.on();
+            Serial.println("configuration done");
+            configuring = true;
         }
-    }
 
-    if (currentWorkMode->handler) {
-        currentWorkMode->handler->onUpdate(transmitter);
-    }
+        if (millis() - receiveTime >= currentWorkMode->receiveInterval) {
+            currentWorkMode->receiveInterval = millis();
+            if (client->hasCommand()) {
+                currentWorkMode->receiveInterval = millis();
+                receive(client->command());
+            }
+        }
 
-    auto msg = transmitter.send();
-    if (!msg.isEmpty()) {
-        client->message(msg);
-    }
+        if (currentWorkMode->handler) {
+            currentWorkMode->handler->onUpdate(transmitter);
+        }
 
-    if (millis() - wakeupTime > currentWorkMode->liveTime) {
-        currentWorkMode->handler->onRelease(transmitter);
-        ESP.deepSleep(currentWorkMode->sleepTime * 1000);
+        auto msg = transmitter.send();
+        if (!msg.isEmpty()) {
+            client->message(msg);
+        }
+
+        if (millis() - wakeupTime > currentWorkMode->liveTime) {
+            currentWorkMode->handler->onRelease(transmitter);
+            ESP.deepSleep(currentWorkMode->sleepTime * 1000);
+        }
+    } else {
+        if (millis() - receiveTime >= 100) {
+            receiveTime = millis();
+            if (connection.isConnected() && client->hasCommand()) {
+                receive(client->command());
+            }
+        }
     }
 }
 
@@ -194,19 +211,13 @@ bool Device::setup(const String &deviceType, IClient *newClient) {
     Serial.begin(9600);
     client = newClient;
     connection.connect(deviceType.c_str(), client);
-    client->message(R"({"command_name":"device_wakeup"})");
-    diode.smoothly(200);
-    Serial.println("waiting for configuration");
-    while (!currentWorkMode) {
-        if (millis() - receiveTime >= 100) {
-            currentWorkMode->receiveInterval = millis();
-            if (client->hasCommand()) {
-                receive(client->command());
-            }
-        }
+    success("device_wakeup");
+    if (connection.isConnected()) {
+
+        diode.smoothly(600);
     }
-    diode.on();
-    Serial.println("configuration done");
+    Serial.println("waiting for configuration");
+
     return true;
 }
 

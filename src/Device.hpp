@@ -69,13 +69,13 @@ public:
     template<typename T>
     bool setup(String const &deviceType) {
         static T connection;
-        return setup(deviceType, connection);
+        return setup(deviceType, &connection);
     }
 
     template<typename T>
     bool workMode(String const &name) {
         static T mode;
-        workMode(name, &mode);
+        return workMode(name, &mode);
     }
 
     bool workMode(String const &name, IWorkMode *handler);
@@ -131,6 +131,7 @@ private:
     IClient *client = nullptr;
     unsigned wakeupTime = 0;
     unsigned receiveTime = 0;
+    bool configuring = true;
 };
 
 extern Device device;
