@@ -27,14 +27,13 @@ String readFromMemory(int address) {
 void Connection::pair(char const *device) {
     diode.smoothly(3000);
     pairing = true;
-    WiFi.disconnect();
-    WiFi.softAP(device, nullptr, 5, 0, 4);
 
-    IPAddress local_ip(192, 168, 5, 10);
-    IPAddress gateway(192, 168, 5, 10);
+    IPAddress local_ip(1, 2, 3, 4);
+    IPAddress gateway(1, 2, 3, 4);
     IPAddress subnet(255, 255, 255, 0);
+    WiFi.mode(WIFI_AP_STA);
     WiFi.softAPConfig(local_ip, gateway, subnet);
-    delay(100);
+    WiFi.softAP(device);
 
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
@@ -88,7 +87,7 @@ void Connection::pair(char const *device) {
     pairServer.begin();
 }
 
-void Connection::connect(char const *device, IClient* client) {
+void Connection::connect(char const *device, IClient *client) {
     diode.setup();
     EEPROM.begin(MAX_MEMORY);
     // если данные о подключении имеются

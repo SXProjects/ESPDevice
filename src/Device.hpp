@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ArduinoJson/ArduinoJson.h"
+#include <ArduinoJson.h>
 #include "Connection.hpp"
 
 enum class DataType {
