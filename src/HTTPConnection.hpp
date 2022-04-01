@@ -8,13 +8,12 @@ class HTTPConnection : public IClient {
 public:
     bool begin(String const& serverPath, WiFiClient& wifiClient) override;
 
-    void message(const String &msg) override;
+    String send(const String &msg) override;
 
-    String command() override;
-
-    bool hasCommand() override;
+    String get(String const &msg) override;
 
 private:
-    HTTPClient client;
+    HTTPClient sender;
+    HTTPClient getter;
 };
 

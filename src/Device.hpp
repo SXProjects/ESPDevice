@@ -2,6 +2,9 @@
 
 #include <ArduinoJson.h>
 #include "Connection.hpp"
+#include <Button.hpp>
+#include <optional>
+#include <utility>
 
 enum class DataType {
     Float,
@@ -21,6 +24,10 @@ public:
     }
 
 private:
+    void setDeviceId(unsigned id) {
+        deviceId = id;
+    }
+
     void switchWorkMode(std::vector<std::pair<String, DataType>> const *i) {
         indicators = i;
     }
@@ -45,6 +52,7 @@ private:
 
     ArduinoJson::DynamicJsonDocument json{1024};
     std::vector<std::pair<String, DataType>> const *indicators = nullptr;
+    unsigned deviceId = 0;
 };
 
 class IWorkMode {
@@ -64,39 +72,19 @@ public:
 
 class Device {
 public:
-    bool setup(String const &deviceType, IClient *newClient);
+    explicit Device(String name, unsigned dId) : deviceType(std::move(name)), deviceId(dId) { }
 
-    template<typename T>
-    bool setup(String const &deviceType) {
-        static T connection;
-        return setup(deviceType, &connection);
+    String const& type() const {
+        return deviceType;
     }
 
-    template<typename T>
-    bool workMode(String const &name) {
-        static T mode;
-        return workMode(name, &mode);
+    unsigned id() const {
+        return deviceId;
     }
 
     bool workMode(String const &name, IWorkMode *handler);
 
     void update();
-
-    template<typename... Types>
-    void print(Types &&... args) {
-        (Serial.print(args), ...);
-    }
-
-    template<typename T>
-    void println(T &&arg) {
-        Serial.println(arg);
-    }
-
-    template<typename T, typename... Types>
-    void println(T &&arg, Types &&... args) {
-        Serial.print(arg);
-        println(args...);
-    }
 
 private:
     struct WorkModeData {
@@ -109,12 +97,7 @@ private:
         std::vector<std::pair<String, DataType>> parameters;
     };
 
-
     void receive(String const &payload);
-
-    void error(String const &from, String const &message);
-
-    void success(String const &from);
 
     static DataType parseDataType(String const &type);
 
@@ -124,11 +107,11 @@ private:
 
     void setWorkMode(String const &commandName, DynamicJsonDocument const &json);
 
-    Connection connection;
+    String deviceType;
+    unsigned deviceId;
     std::vector<WorkModeData> workModes;
     WorkModeData *currentWorkMode = nullptr;
     Transmitter transmitter;
-    IClient *client = nullptr;
     unsigned wakeupTime = 0;
     unsigned receiveTime = 0;
     bool configuring = true;

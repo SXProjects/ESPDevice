@@ -6,23 +6,29 @@ class IClient {
 public:
     virtual bool begin(String const& serverPath, WiFiClient& wifiClient) = 0;
 
-    virtual void message(String const &msg) = 0;
+    virtual String send(const String &msg) = 0;
 
-    virtual String command() = 0;
+    virtual String get(String const &msg) = 0;
 
-    virtual bool hasCommand() = 0;
 };
 
 class Connection
 {
 public:
-    void connect(char const *device, IClient* client);
+    bool connect(String const& device, IClient* client);
 
-    void pair(char const* ssid);
+    bool pair(String const& device);
 
     void update();
 
     bool isConnected() const;
+
+    bool isPairing() const
+    {
+        return pairing;
+    }
+
+    void reset();
 
 private:
     String connectWifi();

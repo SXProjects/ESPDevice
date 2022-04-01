@@ -6,6 +6,7 @@ String Transmitter::send() {
         return {};
     }
     json["command_name"] = "transmit_data";
+    json["device_id"] = deviceId;
     String res;
     ArduinoJson::serializeJson(json, res);
     json.clear();
@@ -61,45 +62,7 @@ void Device::receive(const String &payload) {
 }
 
 void Device::deviceTypeInfo(String const &commandName, const DynamicJsonDocument &json) {
-    if (!workModes.empty()) {
-        return error(commandName, "device already configured");
-    }
 
-    if (!json.containsKey("work_modes")) {
-        return error(commandName, "work_modes is not specified");
-    }
-
-    auto const &wm = json["work_modes"];
-    for (size_t w = 0; w < wm.size(); ++w) {
-        WorkModeData data;
-        data.name = (char const *) wm[w]["name"];
-        data.liveTime = wm[w]["live_time"];
-        data.sleepTime = wm[w]["sleep_time"];
-
-        if (data.sleepTime > 10800000) {
-            return error(commandName, "ESP8266 can't sleep that long");
-        }
-
-        data.receiveInterval = wm[w]["receive_interval"];
-        data.handler = nullptr;
-
-        if (json.containsKey("indicators")) {
-            auto const &idc = wm[w]["indicators"];
-            for (size_t i = 0; i < idc.size(); ++i) {
-                data.indicators.push_back({idc[i]["name"], parseDataType(idc[i]["type"])});
-            }
-        }
-
-        if (json.containsKey("parameters")) {
-            auto const &idc = wm[w]["parameters"];
-            for (size_t i = 0; i < idc.size(); ++i) {
-                data.parameters.push_back({idc[i]["name"], parseDataType(idc[i]["type"])});
-            }
-        }
-
-        workModes.push_back(data);
-    }
-    return success(commandName);
 }
 
 void Device::transmitData(String const &commandName, const DynamicJsonDocument &json) {
@@ -155,7 +118,23 @@ void Device::setWorkMode(String const &commandName, const DynamicJsonDocument &j
 
 void Device::update() {
     diode.loop();
-    connection.update();
+    button.update();
+
+    if (button.endTime() - button.startTime() > 4000) {
+        Serial.println("Aboba");
+        connection.reset();
+        ESP.reset();
+    }
+
+    if (connection.isConnected() || connection.isPairing()) {
+        connection.update();
+    }
+
+    if (!connection.isPairing()) {
+        if (!connect()) {
+            return;
+        }
+    }
 
     if (currentWorkMode) {
         if (!configuring) {
@@ -166,6 +145,7 @@ void Device::update() {
 
         if (millis() - receiveTime >= currentWorkMode->receiveInterval) {
             currentWorkMode->receiveInterval = millis();
+
             if (client->hasCommand()) {
                 currentWorkMode->receiveInterval = millis();
                 receive(client->command());
@@ -178,7 +158,7 @@ void Device::update() {
 
         auto msg = transmitter.send();
         if (!msg.isEmpty()) {
-            client->message(msg);
+            client->send(msg);
         }
 
         if (millis() - wakeupTime > currentWorkMode->liveTime) {
@@ -188,6 +168,11 @@ void Device::update() {
     } else {
         if (millis() - receiveTime >= 100) {
             receiveTime = millis();
+            if (connection.isConnected()) {
+                if (client->get("")) {
+
+                }
+            }
             if (connection.isConnected() && client->hasCommand()) {
                 receive(client->command());
             }
@@ -195,29 +180,5 @@ void Device::update() {
     }
 }
 
-void Device::error(const String &from, const String &message) {
-    String msg = R"({"command_name": )" + from + R"(,"error":")" + message + "\"}";
-    client->message(msg);
-    Serial.println(msg);
-}
-
-void Device::success(const String &from) {
-    String msg = R"({"command_name": )" + from + "\"}";
-    client->message(msg);
-    Serial.println(msg);
-}
-
-bool Device::setup(const String &deviceType, IClient *newClient) {
-    Serial.begin(9600);
-    client = newClient;
-    connection.connect(deviceType.c_str(), client);
-    if (connection.isConnected()) {
-        success("device_wakeup");
-        diode.smoothly(600);
-    }
-    Serial.println("waiting for configuration");
-
-    return true;
-}
-
 Device device = {};
+

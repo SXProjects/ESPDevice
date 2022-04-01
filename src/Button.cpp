@@ -16,5 +16,9 @@ void Button::update() {
 
 void Button::setup(int pin) {
     buttonPin = pin;
+    Serial.print("Button INIT ");
+    Serial.println(buttonPin);
     pinMode(pin, INPUT_PULLUP);
 }
+
+Button button = {};

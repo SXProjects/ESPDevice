@@ -34,3 +34,5 @@ private:
     int endPressed = 0;
 };
 
+extern Button button;
+
