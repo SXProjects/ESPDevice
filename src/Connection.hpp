@@ -1,6 +1,7 @@
 #pragma once
 #include <ESP8266WebServer.h>
 #include "Diode.hpp"
+#include <Flash.hpp>
 
 class IClient {
 public:
@@ -27,8 +28,6 @@ public:
     {
         return pairing;
     }
-
-    void reset();
 
 private:
     String connectWifi();

@@ -1,6 +1,6 @@
 #include "Diode.hpp"
 
-void Diode::loop() {
+void Diode::update() {
     if (!delayLed && !blinkInterval) {
         digitalWrite(diodePin, LOW);
         return;

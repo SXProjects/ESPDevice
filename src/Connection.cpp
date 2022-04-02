@@ -2,32 +2,8 @@
 #include <EEPROM.h>
 #include <ArduinoJson.hpp>
 
-unsigned const MAX_MEMORY = 256;
 
-void saveInMemory(String const &s, int address) {
-    for (size_t i = 0; i < s.length(); ++i) {
-        EEPROM.write(address + i, s[i]);
-    }
-    EEPROM.write(s.length() + address, '\0');
-}
-
-String readFromMemory(int address) {
-    int i = 0;
-    String result;
-    while (true) {
-        uint8_t c = EEPROM.read(address + i);
-        if (c == '\0')
-            break;
-        if (i == 30) {
-            return {};
-        }
-        result += char(c);
-        ++i;
-    }
-    return result;
-}
-
-bool Connection::pair(String const& device) {
+bool Connection::pair(String const &device) {
     diode.smoothly(3000);
     pairing = true;
 
@@ -75,22 +51,22 @@ bool Connection::pair(String const& device) {
         String ip = json["ip"];
         String port = json["port"];
 
-        unsigned len = ssid.length() + password.length() + ip.length() + port.length() + 4;
-        if (len > MAX_MEMORY) {
+        flash.begin();
+        flash.writeSSID(ssid);
+        flash.writePassword(password);
+        flash.writeIP(ip);
+        flash.writePort(port);
+
+        if (!flash.hasMemory()) {
             pairServer.send(400, "application/json",
                     R"({"error":"max request arguments len is 256"})");
             return;
         }
 
-        EEPROM.begin(MAX_MEMORY);
-        saveInMemory(ssid, 1);
-        saveInMemory(password, ssid.length() + 2);
-        saveInMemory(ip, ssid.length() + password.length() + 3);
-        saveInMemory(port, ssid.length() + password.length() + ip.length() + 4);
-        EEPROM.write(0, 42);
-        EEPROM.commit();
-        pairServer.send(200, "application/json",
-                R"({"command_name":"pair"})");
+        flash.writeConfigured(true);
+        flash.write();
+
+        pairServer.send(200, "application/json", R"({"command_name":"pair"})");
         Serial.println("Success pair");
         ESP.reset();
 
@@ -99,11 +75,12 @@ bool Connection::pair(String const& device) {
     return true;
 }
 
-bool Connection::connect(String const& device, IClient *client) {
+bool Connection::connect(String const &device, IClient *client) {
     diode.setup();
-    EEPROM.begin(MAX_MEMORY);
+
+    flash.begin();
     // если данные о подключении имеются
-    if (EEPROM.read(0) != 42) {
+    if (!flash.readConfigured()) {
         Serial.println("Pairing init");
         pair(device);
         return false;
@@ -115,7 +92,7 @@ bool Connection::connect(String const& device, IClient *client) {
 
 void Connection::update() {
     if (pairing) {
-        diode.loop();
+        diode.update();
         pairServer.handleClient();
     } else {
         if (connected && WiFi.status() != WL_CONNECTED) {
@@ -129,65 +106,29 @@ void Connection::update() {
 }
 
 String Connection::connectWifi() {
-    Serial.println("SSID...");
-    String ssid = readFromMemory(1);
-    if (ssid == "") {
-        Serial.println("Can't read ssid from memory");
-        reset();
-    }
-    Serial.println(ssid);
-    Serial.println("PASSWORD...");
-    String password = readFromMemory(ssid.length() + 2);
-    Serial.println(password);
-    if (password == "") {
-        Serial.println("Can't read password from memory");
-        reset();
-    }
-    Serial.println("IP...");
-    String ip = readFromMemory(ssid.length() + password.length() + 3);
-    Serial.println(ip);
-    if (ip == "") {
-        Serial.println("Can't read ip from memory");
-        reset();
-    }
-    Serial.println("PORT...");
-    String port = readFromMemory(ssid.length() + password.length() + ip.length() + 4);
-    Serial.println(port);
-    if (port == "") {
-        Serial.println("Can't read port from memory");
-        reset();
-    }
-
-    Serial.println("ssid");
-    Serial.println(ssid);
-    Serial.println("password");
-    Serial.println(password);
-    Serial.println("ip");
-    Serial.println(ip);
-    Serial.println("port");
-    Serial.println(port);
+    String ssid = flash.readSSID();
+    String password = flash.readPassword();
+    String ip = flash.readIP();
+    unsigned port = flash.readPort();
 
     WiFi.begin(ssid, password);
-    Serial.println("Connecting...");
+    Serial.println("Connecting to WIFI...");
 
     int i = 1;
     bool diodeState = false;
     for (; i <= 5; ++i) {
         diodeState = !diodeState;
-        if(diodeState)
-        {
+        if (diodeState) {
             diode.on();
-        } else
-        {
+        } else {
             diode.off();
         }
 
-        diode.loop();
+        diode.update();
 
         Serial.println(i);
         delay(1000);
-        if(WiFi.status() == WL_CONNECTED)
-        {
+        if (WiFi.status() == WL_CONNECTED) {
             break;
         }
     }
@@ -200,7 +141,7 @@ String Connection::connectWifi() {
         Serial.print("IP address:\t");
         Serial.println(WiFi.localIP());
         connected = true;
-        wifiClient.connect(ip, port.toInt());
+        wifiClient.connect(ip, port);
         return ip + ":" + port + "/";
     }
 
@@ -208,11 +149,4 @@ String Connection::connectWifi() {
 
 bool Connection::isConnected() const {
     return connected;
-}
-
-void Connection::reset() {
-    EEPROM.begin(1);
-    EEPROM.write(0, 0);
-    EEPROM.commit();
-    ESP.reset();
 }

@@ -49,13 +49,18 @@ private:
 
     bool setWorkMode(String const &commandName);
 
+    Device *findDevice(unsigned deviceId);
+
     void sleep(unsigned ms);
+
+    void release();
 
     unsigned uniqueId;
     Connection connection;
     IClient *client = nullptr;
     std::vector<Device> devices;
     DynamicJsonDocument lastJson{512};
-    unsigned lastTime = 0;
+    unsigned lastSleepTime = 0;
     unsigned sleepTime = 0;
+    unsigned rebootSleepTime = 0;
 };

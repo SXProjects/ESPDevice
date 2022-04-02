@@ -23,6 +23,11 @@ public:
         json["data"]["value"] = val;
     }
 
+    void sleep(unsigned time) {
+        sleepTime = time;
+        sleepBegin = millis();
+    }
+
 private:
     void setDeviceId(unsigned id) {
         deviceId = id;
@@ -50,9 +55,11 @@ private:
         return false;
     }
 
-    ArduinoJson::DynamicJsonDocument json{1024};
+    ArduinoJson::DynamicJsonDocument json{256};
     std::vector<std::pair<String, DataType>> const *indicators = nullptr;
     unsigned deviceId = 0;
+    unsigned sleepBegin = 0;
+    unsigned sleepTime = 0;
 };
 
 class IWorkMode {
@@ -72,9 +79,11 @@ public:
 
 class Device {
 public:
-    explicit Device(String name, unsigned dId) : deviceType(std::move(name)), deviceId(dId) { }
+    explicit Device(String name, unsigned dId) : deviceType(std::move(name)), deviceId(dId) {
+        transmitter.deviceId = dId;
+    }
 
-    String const& type() const {
+    String const &type() const {
         return deviceType;
     }
 
@@ -84,37 +93,33 @@ public:
 
     bool workMode(String const &name, IWorkMode *handler);
 
+    String receive(JsonVariantConst const &val, String const &name);
+
+    String setWorkMode(String const &workMode);
+
+    String addWorkMode(String const &workModel);
+
+    String addParameterIndicator(String const &name, String type, bool indicator);
+
+    void init();
+
     void update();
+
+    void release();
+
+    unsigned sleepRemain();
 
 private:
     struct WorkModeData {
         String name;
         IWorkMode *handler = nullptr;
-        unsigned liveTime = 0;
-        unsigned sleepTime = 0;
-        unsigned receiveInterval = 0;
         std::vector<std::pair<String, DataType>> indicators;
         std::vector<std::pair<String, DataType>> parameters;
     };
-
-    void receive(String const &payload);
-
-    static DataType parseDataType(String const &type);
-
-    void deviceTypeInfo(String const &commandName, DynamicJsonDocument const &json);
-
-    void transmitData(String const &commandName, DynamicJsonDocument const &json);
-
-    void setWorkMode(String const &commandName, DynamicJsonDocument const &json);
 
     String deviceType;
     unsigned deviceId;
     std::vector<WorkModeData> workModes;
     WorkModeData *currentWorkMode = nullptr;
     Transmitter transmitter;
-    unsigned wakeupTime = 0;
-    unsigned receiveTime = 0;
-    bool configuring = true;
 };
-
-extern Device device;

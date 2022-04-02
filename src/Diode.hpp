@@ -35,7 +35,7 @@ public:
         blinkInterval = 1;
     }
 
-    void loop();
+    void update();
 
 private:
     unsigned const diodePin = 2;
