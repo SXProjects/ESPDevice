@@ -6,11 +6,7 @@
 #include <optional>
 #include <utility>
 
-enum class DataType {
-    Float,
-    Int,
-    Bool,
-};
+
 
 class Transmitter {
     friend class Device;

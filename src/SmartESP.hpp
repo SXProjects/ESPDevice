@@ -55,12 +55,16 @@ private:
 
     void release();
 
+    uint64_t timeSinceUp();
+
+    uint64_t lastSleepTime();
+
     unsigned uniqueId;
     Connection connection;
     IClient *client = nullptr;
     std::vector<Device> devices;
     DynamicJsonDocument lastJson{512};
-    unsigned lastSleepTime = 0;
+    unsigned lastSleepTimePoint = 0;
     unsigned sleepTime = 0;
-    unsigned rebootSleepTime = 0;
+    unsigned timeSinceServerUp = 0;
 };

@@ -33,7 +33,7 @@ void SmartESP::setup(IClient *newClient, unsigned int uId) {
     uniqueId = uId;
 
     flash.begin();
-    rebootSleepTime = flash.readSleepTime();
+    lastSleepTimePoint = flash.readLastSleepTimePoint();
 }
 
 bool SmartESP::workMode(String const &deviceType, String const &name, IWorkMode *handler) {
@@ -55,10 +55,10 @@ void SmartESP::update() {
         flash.resetReboot();
     }
 
-    if (millis() - lastSleepTime < sleepTime) {
+    if (timeSinceUp() - lastSleepTimePoint < sleepTime) {
         return;
     } else {
-        lastSleepTime = 0;
+        lastSleepTimePoint = 0;
         sleepTime = 0;
     }
 
@@ -94,6 +94,8 @@ bool SmartESP::configureDevices(String const &commandName) {
         error(commandName, "device must be configured by device_config_info");
     }
     JSON_FIELD(lastJson, devices)
+    JSON_FIELD(lastJson, timeSinceServerUp)
+    timeSinceServerUp = j_timeSinceServerUp;
 
     for (size_t d = 0; d < j_devices.size(); ++d) {
         JSON_FIELD(j_devices[d], device_id)
@@ -234,17 +236,20 @@ bool SmartESP::setWorkMode(const String &commandName) {
 }
 
 void SmartESP::sleep(unsigned int ms) {
-    release();
-
     if (ms > ms * 1000 * 60 * 60 * 2) {
         error("sleep", "ESP can't sleep longer then two hours");
-    } else if (ms < 5 * 60 * 1000) {
-        lastSleepTime = millis();
-        sleepTime = ms;
+        return;
+    }
+
+    release();
+
+    lastSleepTimePoint = timeSinceUp();
+    sleepTime = ms;
+
+    if (ms >= 5 * 60 * 1000) {
         flash.begin();
-        flash.writeSleepTime(sleepTime);
-    } else {
-        ESP.deepSleep(ms * 1000);
+        flash.writeLastSleepTimePoint(lastSleepTimePoint);
+        ESP.deepSleep(sleepTime * 1000);
     }
 }
 
@@ -261,4 +266,12 @@ void SmartESP::release() {
     for (auto &d: devices) {
         d.release();
     }
+}
+
+uint64_t SmartESP::timeSinceUp() {
+    return timeSinceServerUp + millis();
+}
+
+uint64_t SmartESP::lastSleepTime() {
+    return timeSinceUp() - lastSleepTimePoint;
 }
