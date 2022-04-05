@@ -325,7 +325,9 @@ bool SmartESP::updateConfig() {
 
     auto types = lastJson.createNestedArray("device_types");
     for (auto const &d: devices) {
-        types.add(d.type().c_str());
+        auto e = types.addElement();
+        e["type"] = d.type();
+        e["work_mode"] = d.mode();
     }
 
     String command;

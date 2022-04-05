@@ -99,6 +99,10 @@ public:
 
     String addParameterIndicator(String const &name, String const &type, bool indicator);
 
+    String const& mode() const {
+        return currentWorkMode->name;
+    }
+
     void init();
 
     void update();

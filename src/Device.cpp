@@ -32,6 +32,7 @@ bool Device::workMode(const String &name, IWorkMode *handler) {
         }
     }
     workModes.push_back({name, handler});
+    currentWorkMode = &workModes[0];
     return false;
 }
 
