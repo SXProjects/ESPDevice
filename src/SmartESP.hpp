@@ -4,7 +4,7 @@
 
 class SmartESP {
 public:
-    void setup(IClient *newClient, unsigned uniqueId);
+    void setup(IClient *newClient, unsigned uniqueId, unsigned version);
 
     bool workMode(String const &deviceType, String const &name, IWorkMode *handler);
 
@@ -16,25 +16,7 @@ public:
 
     void update();
 
-    template<typename... Types>
-    void print(Types &&... args) {
-        (Serial.print(args), ...);
-    }
-
-    template<typename T>
-    void println(T &&arg) {
-        Serial.println(arg);
-    }
-
-    template<typename T, typename... Types>
-    void println(T &&arg, Types &&... args) {
-        Serial.print(arg);
-        println(args...);
-    }
-
 private:
-    bool connect();
-
     void error(String const &from, String const &message, bool isGet = false);
 
     bool message(String const &from, String const &message = "", bool isGet = false);
@@ -59,12 +41,27 @@ private:
 
     uint64_t lastSleepTime();
 
-    unsigned uniqueId;
+    bool updateConfig();
+
+    bool saveConfig();
+
+    bool deserializeConfig();
+
+    String devName;
+    unsigned uniqueId = -1;
+    unsigned version = -1;
+    bool configured = false;
+    bool updated = false;
+    bool offline = true;
+
     Connection connection;
     IClient *client = nullptr;
     std::vector<Device> devices;
     DynamicJsonDocument lastJson{512};
-    unsigned lastSleepTimePoint = 0;
-    unsigned sleepTime = 0;
-    unsigned timeSinceServerUp = 0;
+
+//    unsigned lastSleepTimePoint = 0;
+//    unsigned sleepTime = 0;
+//    unsigned timeSinceServerUp = 0;
 };
+
+extern SmartESP esp;

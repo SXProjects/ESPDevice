@@ -30,10 +30,15 @@ public:
     }
 
 private:
-    String connectWifi();
+    String connectWifi(String const& devName);
 
     ESP8266WebServer pairServer {80};
     WiFiClient wifiClient;
     bool pairing = false;
     bool connected = false;
+    ArduinoJson::DynamicJsonDocument const* json = nullptr;
+    String ssid;
+    String password;
+    String ip;
+    unsigned port;
 };

@@ -3,108 +3,39 @@
 unsigned const MAX_MEMORY = 1024;
 
 
-void Flash::begin() {
+void Flash::beginWrite() {
     EEPROM.begin(MAX_MEMORY);
-    hasMem = true;
 }
 
-void Flash::commit() {
+void Flash::endWrite() {
     EEPROM.write(offset, '\0');
     EEPROM.commit();
 }
 
-void Flash::writeConfigured(bool val) {
-    if (val) {
-        EEPROM.write(0, 42);
-    } else {
-        EEPROM.write(0, 0);
-    }
-    sleepOffset = 1;
-}
-
-bool Flash::readConfigured() {
-    return EEPROM.read(0) == 42;
-}
-
-void Flash::writeLastSleepTimePoint(unsigned int val) {
-    saveInMemoryUnsigned(val, sleepOffset, "sleepTime");
-    ssidOffset = sleepOffset + 4;
-}
-
-unsigned Flash::readLastSleepTimePoint() {
-    return readFromMemoryUnsigned(sleepOffset, "sleepTime");
-}
-
-void Flash::writeSSID(const String &val) {
-    saveInMemory(val, ssidOffset, "ssid");
-    passwordOffset = ssidOffset + val.length() + 1;
-}
-
-String Flash::readSSID() {
-    return readFromMemory(ssidOffset, "ssid");
-}
-
-void Flash::writePassword(const String &val) {
-    saveInMemory(val, passwordOffset, "password");
-    ipOffset = passwordOffset + val.length() + 1;
-}
-
-String Flash::readPassword() {
-    return readFromMemory(passwordOffset, "password");
-}
-
-void Flash::writeIP(const String &val) {
-    saveInMemory(val, ipOffset, "ip");
-    portOffset = ipOffset + val.length() + 1;
-}
-
-String Flash::readIP() {
-    return readFromMemory(ipOffset, "ip");
-}
-
-void Flash::writePort(const String &val) {
-    if (portOffset + val.length() + 1 >= MAX_MEMORY) {
-        hasMem = false;
-    } else {
-        saveInMemory(val, portOffset, "port");
-        hasMem = true;
-    }
-}
-
-unsigned Flash::readPort() {
-    return readFromMemory(portOffset, "port").toInt();
-}
-
-void Flash::resetReboot() {
-    begin();
-    writeConfigured(false);
-    writeLastSleepTimePoint(0);
-    ESP.reset();
-}
-
 bool Flash::read() {
-    offset = 0;
+    offset = 1;
     EEPROM.begin(MAX_MEMORY);
     while (true) {
+        if (EEPROM.read(offset) == '\0') {
+            break;
+        }
+
         FlashData data;
         data.key = readKeyType(offset, data.type);
         offset += data.key.length() + 5;
         if (data.type == DataType::Undefined) {
-            Serial.println("Undefined data type");
-            resetReboot();
+            utils::reset("Undefined data type");
         } else if ((unsigned) data.type > 3) {
-            data.values = readFromMemoryArray(offset, DataType((unsigned) data.type - 3));
-            offset += data.values.size() * dataTypeSize(data.type) + 1;
+            auto type = DataType((unsigned) data.type - 4);
+            data.values = readFromMemoryArray(offset, type);
+            offset += data.values.size() + 1;
         } else {
-            readFromMemory(offset, data.value, data.type);
+            data.value = readFromMemory(offset, data.type);
             offset += dataTypeSize(data.type);
         }
+        Serial.println();
 
         flashData.push_back(data);
-        if(EEPROM.read(offset) == '\0')
-        {
-            break;
-        }
     }
     EEPROM.end();
     return true;
@@ -112,47 +43,61 @@ bool Flash::read() {
 
 DataValue Flash::readFromMemory(unsigned int address, DataType type) {
     DataValue val = {};
+    if(EEPROM.read(address) == '\0')
+    {
+        val.c = '\0';
+        return val;
+    }
     switch (type) {
         case DataType::Float:
             val.f = readFromMemory<float>(address);
+            utils::print(val.f, " ");
             break;
         case DataType::Int:
             val.i = readFromMemory<int>(address);
+            utils::print(val.i, " ");
             break;
         case DataType::Bool:
             val.b = readFromMemory<bool>(address);
+            utils::print(val.b, " ");
+            break;
+        case DataType::Char:
+            val.c = readFromMemory<char>(address);
+            utils::print(val.c, " ");
             break;
         default:
-            Serial.println("Undefined type error");
-            flash.resetReboot();
+            utils::reset("readFromMemory undefined type error");
             break;
     }
     return val;
 }
 
-std::vector<DataValue> Flash::readFromMemoryArray(unsigned int address, DataType type) {
+std::vector<uint8_t> Flash::readFromMemoryArray(unsigned int address, DataType type) {
     int i = 0;
-    std::vector<DataValue> result;
+    std::vector<uint8_t> result;
+    unsigned typeSize = dataTypeSize(type);
 
     while (true) {
-        if (EEPROM.read(address)) {
+        if (EEPROM.read(address + i * typeSize) == '\0') {
             break;
         }
 
-        DataValue val = readFromMemory(address + i * dataTypeSize(type), val, type);
+        DataValue val = readFromMemory(address + i * typeSize, type);
         if (i == 25) {
-            return {};
+            break;
         }
 
-        result.push_back(val);
+        auto bytepointer = reinterpret_cast<uint8_t *>(&val);
+
+        for (size_t j = 0; j < typeSize; j++) {
+            result.push_back(bytepointer[j]);
+        }
+
         ++i;
     }
 
     if (result.empty()) {
-        Serial.println("-array without ending");
-        flash.resetReboot();
-    } else {
-        Serial.println();
+        utils::reset("array without ending");
     }
 
     return result;
@@ -160,19 +105,22 @@ std::vector<DataValue> Flash::readFromMemoryArray(unsigned int address, DataType
 
 unsigned Flash::dataTypeSize(DataType type) {
     switch (type) {
-        case DataType::Undefined:
-            return 0;
         case DataType::Float:
-            return 4;
+            return sizeof(float);
         case DataType::Int:
-            return 4;
+            return sizeof(int);
         case DataType::Bool:
-            return 1;
+            return sizeof(bool);
+        case DataType::Char:
+            return sizeof(char);
+        default:
+            utils::reset("dataTypeSize undefined type error");
+            return 0;
     }
 }
 
 String Flash::readKeyFromMemory(unsigned int address) {
-    Serial.print("Reading key from memory: ");
+    utils::print("Reading key from memory: ");
 
     int i = 0;
     String result;
@@ -188,13 +136,11 @@ String Flash::readKeyFromMemory(unsigned int address) {
     }
 
     if (result == "") {
-        Serial.println("error");
+        utils::println("error");
         return "";
     } else {
-        Serial.print(result);
-        Serial.print(", Value: ");
+        utils::print(result, " Value: ");
     }
-
     return result;
 }
 
@@ -204,8 +150,7 @@ void Flash::saveKeyInMemory(const String &s, unsigned int address) {
     }
     EEPROM.write(s.length() + address, '\0');
 
-    Serial.print("Writing key to memory: " + s);
-    Serial.print(", Value: ");
+    utils::print("Writing key to memory: ", s, ", Value: ");
 }
 
 String Flash::readKeyType(unsigned int address, DataType &type) {
@@ -213,18 +158,49 @@ String Flash::readKeyType(unsigned int address, DataType &type) {
     type = DataType::Undefined;
     name = readKeyFromMemory(address);
     if (name.isEmpty()) {
-        flash.resetReboot();
+        utils::reset("can't read key");
     }
-    type = readFromMemory<DataType>(address + name.length() + 1);
+    type = (DataType) readFromMemory<unsigned>(address + name.length() + 1);
+
     return name;
 }
 
-void Flash::end() {
-    EEPROM.end();
+void Flash::reset() {
+    flashData.clear();
+    offset = 1;
+    for (unsigned i = 0; i < MAX_MEMORY; ++i) {
+        EEPROM.write(i, 0);
+    }
 }
 
-void writeValues(std::vector<unsigned> const &times) {
+std::string_view Flash::readString(const String &name) {
+    char const *jp = nullptr;
+    size_t js = 0;
+    if (get(name, jp, js)) {
+        return std::string_view(jp, js + 1);
+    } else {
+        return {};
+    }
+}
 
+const ArduinoJson::DynamicJsonDocument &Flash::readJson(const String &name) {
+    auto str = readString(name);
+    if (!str.empty()) {
+        ArduinoJson::deserializeJson(json, str);
+    } else {
+        json.clear();
+    }
+    return json;
+}
+
+void Flash::saveJson(const String &name, const ArduinoJson::DynamicJsonDocument &doc) {
+    String res;
+    ArduinoJson::serializeJson(doc, res);
+    saveString(name, res);
+}
+
+void Flash::saveString(const String &name, const String &str) {
+    save(name, str.begin(), str.length());
 }
 
 Flash flash = {};

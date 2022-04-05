@@ -2,87 +2,205 @@
 
 #include <Arduino.h>
 #include <EEPROM.h>
+#include <Utils.hpp>
+#include <ArduinoJson.hpp>
 
-enum class DataType {
+enum class DataType : unsigned {
     Undefined,
     Float,
     Int,
     Bool,
+    Char,
     ArrayFloat,
     ArrayInt,
     ArrayBool,
+    ArrayChar,
 };
+
+using Char = char;
 
 union DataValue {
     float f;
     int i;
     bool b;
+    Char c;
 };
 
 struct FlashData {
     String key;
     DataType type;
     DataValue value;
-    std::vector<DataValue> values;
+    std::vector<uint8_t> values;
 };
 
-// ЕСЛИ РАЗМЕРЫ СТРОКИ ДРУГИЕ, ТО ВЫПОЛНЯЕМ ПОСЛЕДОВАТЕЛЬНУЮ ПЕРЕЗАПИСЬ
-// (ВЫЗВАЕМ ВСЕ write, которые принимают строки)
 class Flash {
 public:
-    void write();
+    void beginWrite();
 
-    void commit();
+    void endWrite();
 
     bool read();
 
+    bool getVerifyByte() {
+        return EEPROM.read(0) == 42;
+    }
+
+    void setVerifyByte(bool v) {
+        if (v) {
+            EEPROM.write(0, 42);
+        } else {
+            EEPROM.write(0, 0);
+        }
+    }
+
     template<typename T>
     void save(String const &name, T val) {
-        saveInMemory(val, offset, name);
-        offset += name.length() + 5 + sizeof(T);
+        using Type = std::decay_t<T>;
+        unsigned addr = 0;
+        for (auto &d: flashData) {
+            if (d.key == name) {
+                saveInMemory(val, addr, name);
+
+                if constexpr(std::is_same_v<Type, float>) {
+                    if (d.type == DataType::Float) {
+                        d.value.f = val;
+                    }
+                } else if constexpr(std::is_same_v<Type, int>) {
+                    if (d.type == DataType::Int) {
+                        d.value.i = val;
+                    }
+                } else if constexpr(std::is_same_v<Type, bool>) {
+                    if (d.type == DataType::Bool) {
+                        d.value.b = val;
+                    }
+                } else if constexpr(std::is_same_v<Type, Char>) {
+                    if (d.type == DataType::Char) {
+                        d.value.c = val;
+                    }
+                }
+                return;
+            }
+
+            if (d.values.empty()) {
+                addr += d.key.length() + 5 + dataTypeSize(d.type);
+            } else {
+                addr += d.key.length() + 6 + d.values.size();
+            }
+        }
     }
 
     template<typename T>
-    void save(String const &name, std::vector<T> const &arr) {
-        saveInMemoryArray(arr, offset, name);
-        offset = name.length() + 5 + sizeof(T) * arr.size();
+    void save(String const &name, T const *arr, size_t size) {
+        saveInMemoryArray(arr, size, offset, name);
+        offset += name.length() + 6 + sizeof(T) * size;
     }
 
-    void writeConfigured(bool val);
+    template<typename T>
+    bool get(String const &name, T &res) {
+        using Type = std::decay_t<T>;
+        for (auto const &d: flashData) {
+            if (d.key == name) {
+                if (d.value.c == '\0') {
+                    return false;
+                }
+                if constexpr(std::is_same_v<Type, float>) {
+                    if (d.type == DataType::Float) {
+                        res = d.value.f;
+                        return true;
+                    }
+                } else if constexpr(std::is_same_v<Type, int>) {
+                    if (d.type == DataType::Int) {
+                        res = d.value.i;
+                        return true;
+                    }
+                } else if constexpr(std::is_same_v<Type, bool>) {
+                    if (d.type == DataType::Bool) {
+                        res = d.value.b;
+                        return true;
+                    }
+                } else if constexpr(std::is_same_v<Type, Char>) {
+                    if (d.type == DataType::Char) {
+                        res = d.value.c;
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
 
-    void writeLastSleepTimePoint(unsigned val);
+    template<typename T>
+    bool clear(String const &name) {
+        unsigned addr = 0;
+        for (auto &d: flashData) {
+            if (d.key == name) {
+                for (int i = 0; i < sizeof(T); ++i) {
+                    EEPROM.write(addr + d.key.length() + 5 + i, '\0');
+                }
+                d.value.c = '\0';
+                return true;
+            }
 
-    void writeSSID(String const &val);
+            if (d.values.empty()) {
+                addr += d.key.length() + 5 + dataTypeSize(d.type);
+            } else {
+                addr += d.key.length() + 6 + d.values.size();
+            }
+        }
+        return false;
+    }
 
-    void writePassword(String const &val);
+    template<typename T>
+    bool get(String const &name, T const *&begin, size_t &count) {
+        using Type = std::decay_t<T>;
 
-    void writeIP(String const &val);
+        for (auto const &d: flashData) {
+            if (d.key == name) {
+                if constexpr(std::is_same_v<Type, float>) {
+                    if (d.type == DataType::ArrayFloat) {
+                        begin = reinterpret_cast<float const *>(&d.values.front());
+                        count = d.values.size() / sizeof(float);
+                        return true;
+                    }
+                } else if constexpr(std::is_same_v<Type, int>) {
+                    if (d.type == DataType::ArrayInt) {
+                        begin = reinterpret_cast<int const *>(&d.values.front());
+                        count = d.values.size() / sizeof(int);
+                        return true;
+                    }
+                } else if constexpr(std::is_same_v<Type, bool>) {
+                    if (d.type == DataType::ArrayBool) {
+                        begin = reinterpret_cast<bool const *>(&d.values.front());
+                        count = d.values.size() / sizeof(bool);
+                        return true;
+                    }
+                } else if constexpr(std::is_same_v<Type, Char>) {
+                    if (d.type == DataType::ArrayChar) {
+                        begin = reinterpret_cast<Char const *>(&d.values.front());
+                        count = d.values.size() / sizeof(Char);
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
 
-    void writePort(String const &val);
+    std::string_view readString(String const &name);
 
-    bool readConfigured();
+    ArduinoJson::DynamicJsonDocument const &readJson(String const &name);
 
-    unsigned readLastSleepTimePoint();
+    void saveString(String const &name, String const &str);
 
-    String readSSID();
+    void saveJson(String const &name, ArduinoJson::DynamicJsonDocument const &doc);
 
-    String readPassword();
-
-    String readIP();
-
-    unsigned readPort();
-
-    void resetReboot();
-
-    void writeValues(std::vector<unsigned> const &times);
-
-    std::vector<unsigned> writeSleepTimes();
+    void reset();
 
 private:
     DataValue readFromMemory(unsigned int address, DataType type);
 
     template<typename T>
-    static void saveType(unsigned offset, bool isArray) {
+    void saveType(unsigned address, bool isArray) {
         DataType type = DataType::Undefined;
 
         if constexpr(std::is_same_v<T, float>) {
@@ -91,15 +209,16 @@ private:
             type = DataType::Int;
         } else if constexpr(std::is_same_v<T, bool>) {
             type = DataType::Bool;
+        } else if constexpr(std::is_same_v<T, char>) {
+            type = DataType::Char;
         } else {
-            Serial.println("Undefined type error");
-            flash.resetReboot();
+            utils::reset("Save type undefined type error");
         }
 
         if (isArray) {
-            saveInMemory(DataType((unsigned) (type) + 3), offset);
+            saveInMemory((unsigned) (type) + 4, address);
         } else {
-            saveInMemory(type, offset);
+            saveInMemory((unsigned) type, address);
         }
     }
 
@@ -108,42 +227,47 @@ private:
         unsigned addLength = 0;
         if (!name.isEmpty()) {
             saveKeyInMemory(name, address);
-            saveType<T>(address + name.length() + 1);
+            saveType<T>(address + name.length() + 1, false);
             addLength = name.length() + 5;
         }
 
         saveInMemory(val, address + addLength);
-        Serial.println(val);
-        offset = address + addLength + sizeof(T);
-    }
-
-    template<typename T>
-    static void saveInMemoryArray(std::vector<T> const &val, unsigned address, String const &name) {
-        saveKeyInMemory(name, address);
-        saveType<T>(address + name.length() + 1);
-
-        for (size_t i = 0; i < val.size(); ++i) {
-            saveInMemory<T>(val[i], address + i * sizeof(T) + name.length() + 1, "");
+        if (name.isEmpty()) {
+            utils::print(val, " ");
+        } else {
+            utils::println(val);
         }
-        EEPROM.write(val.size() * sizeof(T) + address, '\0');
     }
 
-    static String readKeyType(unsigned address, DataType &type);
+    template<typename T>
+    void saveInMemoryArray(T const *val, size_t size, unsigned address, String const &name) {
+        saveKeyInMemory(name, address);
+        saveType<T>(address + name.length() + 1, true);
 
-    static std::vector<DataValue> readFromMemoryArray(unsigned address, DataType type);
+        unsigned arrOffset = address + name.length() + 5;
+        for (size_t i = 0; i < size; ++i) {
+            saveInMemory<T>(val[i], arrOffset + i * sizeof(T), "");
+        }
+        EEPROM.write(size * sizeof(T) + arrOffset, '\0');
+        Serial.println();
+    }
 
-    static unsigned dataTypeSize(DataType type);
+    String readKeyType(unsigned address, DataType &type);
 
-    static String readKeyFromMemory(unsigned address);
+    std::vector<uint8_t> readFromMemoryArray(unsigned address, DataType type);
 
-    static void saveKeyInMemory(String const &s, unsigned address);
+    unsigned dataTypeSize(DataType type);
+
+    String readKeyFromMemory(unsigned address);
+
+    void saveKeyInMemory(String const &s, unsigned address);
 
     template<typename T>
-    static T readFromMemory(unsigned address) {
+    T readFromMemory(unsigned address) {
         T val;
         uint8_t buffer[sizeof(T)];
-        for (int i = 0; i < sizeof(T); i++) {
-            buffer[i] = EEPROM.read(address);
+        for (size_t i = 0; i < sizeof(T); i++) {
+            buffer[i] = EEPROM.read(address + i);
         }
 
         memcpy(&val, &buffer, sizeof(T));
@@ -151,16 +275,17 @@ private:
     }
 
     template<typename T>
-    static void saveInMemory(T val, unsigned address) {
+    void saveInMemory(T val, unsigned address) {
         auto bytepointer = reinterpret_cast<uint8_t *>(&val);
 
-        for (int i = 0; i < sizeof(T); i++) {
-            EEPROM.write(address, bytepointer[i]);
+        for (size_t i = 0; i < sizeof(T); i++) {
+            EEPROM.write(address + i, bytepointer[i]);
         }
     }
 
     std::vector<FlashData> flashData;
-    unsigned offset;
+    ArduinoJson::DynamicJsonDocument json{512};
+    unsigned offset = 1;
 };
 
 extern Flash flash;

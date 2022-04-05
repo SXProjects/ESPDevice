@@ -1,7 +1,4 @@
 #include "Connection.hpp"
-#include <EEPROM.h>
-#include <ArduinoJson.hpp>
-
 
 bool Connection::pair(String const &device) {
     diode.smoothly(3000);
@@ -46,48 +43,22 @@ bool Connection::pair(String const &device) {
             return;
         }
 
-        String ssid = json["ssid"];
-        String password = json["password"];
-        String ip = json["ip"];
-        String port = json["port"];
-
-        flash.begin();
-        flash.writeSSID(ssid);
-        flash.writePassword(password);
-        flash.writeIP(ip);
-        flash.writePort(port);
-
-        if (!flash.hasMemory()) {
-            pairServer.send(400, "application/json",
-                    R"({"error":"max request arguments len is 256"})");
-            return;
-        }
-
-        flash.writeConfigured(true);
-        flash.write();
+        flash.beginWrite();
+        flash.reset();
+        flash.saveJson("connectInfo", json);
+        flash.endWrite();
 
         pairServer.send(200, "application/json", R"({"command_name":"pair"})");
-        Serial.println("Success pair");
-        ESP.reset();
+        pairing = false;
 
+        utils::reset("Success paired");
     });
     pairServer.begin();
     return true;
 }
 
 bool Connection::connect(String const &device, IClient *client) {
-    diode.setup();
-
-    flash.begin();
-    // если данные о подключении имеются
-    if (!flash.readConfigured()) {
-        Serial.println("Pairing init");
-        pair(device);
-        return false;
-    } else {
-        Serial.println("Connecting to WiFi");
-        return client->begin(connectWifi(), wifiClient);
-    }
+    return client->begin(connectWifi(device), wifiClient);
 }
 
 void Connection::update() {
@@ -105,11 +76,21 @@ void Connection::update() {
     }
 }
 
-String Connection::connectWifi() {
-    String ssid = flash.readSSID();
-    String password = flash.readPassword();
-    String ip = flash.readIP();
-    unsigned port = flash.readPort();
+String Connection::connectWifi(String const &devName) {
+    if (!json) {
+        json = &flash.readJson("connectInfo");
+
+        if (!(json->containsKey("ssid") && json->containsKey("password") &&
+                json->containsKey("ip") && json->containsKey("port"))) {
+            utils::println("Connection config invalid or not exists");
+            pair(devName);
+            return {};
+        }
+        ssid = (char const *) (*json)["ssid"];
+        password = (char const *) (*json)["password"];
+        ip = (char const *) (*json)["ip"];
+        port = (unsigned) (*json)["port"];
+    }
 
     WiFi.begin(ssid, password);
     Serial.println("Connecting to WIFI...");

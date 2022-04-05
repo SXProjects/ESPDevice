@@ -1,42 +1,41 @@
-#include "Device.hpp"
 #include "HTTPConnection.hpp"
+#include "SmartESP.hpp"
 
-class NormalMode : public IWorkMode
-{
+class NormalMode : public IWorkMode {
 public:
     void onInit(Transmitter &transmitter) override {
-        device.println("onInit");
+        utils::println("onInit");
     }
 
     void onRelease(Transmitter &transmitter) override {
-        device.println("onRelease");
+        utils::println("onRelease");
     }
 
     void onReceive(Transmitter &transmitter, const String &parameter, int val) override {
         transmitter.transmit("SUPERMEGAINDICATOR", 228);
-        device.println("onReceive int");
+        utils::println("onReceive int");
     }
 
     void onReceive(Transmitter &transmitter, const String &parameter, float val) override {
         transmitter.transmit("SUPERMEGAINDICATOR", 42);
-        device.println("onReceive float");
+        utils::println("onReceive float");
     }
 
     void onReceive(Transmitter &transmitter, const String &parameter, bool val) override {
         transmitter.transmit("SUPERMEGAINDICATOR", 322);
-        device.println("onReceive bool");
+        utils::println("onReceive bool");
     }
 
     void onUpdate(Transmitter &transmitter) override {
-        device.println("onUpdate");
+        utils::println("onUpdate");
     }
 };
 
 void setup() {
-    device.setup<HTTPConnection>("test");
-    device.workMode<NormalMode>("NormalMode");
+    esp.setup(new HTTPConnection, 1, 1);
+    esp.workMode<NormalMode>("thermometer", "on_time");
 }
 
 void loop() {
-    device.update();
+    esp.update();
 }

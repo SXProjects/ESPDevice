@@ -6,7 +6,16 @@
 #include <optional>
 #include <utility>
 
+struct Indicator {
+    String name;
+    DataType type;
+    bool send = false;
+};
 
+struct Parameter {
+    String name;
+    DataType type;
+};
 
 class Transmitter {
     friend class Device;
@@ -14,7 +23,11 @@ class Transmitter {
 public:
     template<typename T>
     void transmit(String const &indicator, T val) {
-        checkIndicator<T>(indicator);
+        if (offline) {
+            flash.beginWrite();
+            flash.save(key + indicator, val);
+            flash.endWrite();
+        }
         json["data"]["name"] = indicator;
         json["data"]["value"] = val;
     }
@@ -22,40 +35,19 @@ public:
     void sleep(unsigned time) {
         sleepTime = time;
         sleepBegin = millis();
+        sendToSleep = true;
     }
 
 private:
-    void setDeviceId(unsigned id) {
-        deviceId = id;
-    }
-
-    void switchWorkMode(std::vector<std::pair<String, DataType>> const *i) {
-        indicators = i;
-    }
-
     String send();
 
-    template<typename T>
-    bool checkIndicator(String const &indicator) {
-        for (auto const &i: *indicators) {
-            if (indicator == i.first) {
-                if constexpr(std::is_same_v<T, float>) {
-                    return i.second == DataType::Float;
-                } else if constexpr(std::is_same_v<T, bool>) {
-                    return i.second == DataType::Bool;
-                } else if constexpr(std::is_same_v<T, int>) {
-                    return i.second == DataType::Int;
-                }
-            }
-        }
-        return false;
-    }
-
     ArduinoJson::DynamicJsonDocument json{256};
-    std::vector<std::pair<String, DataType>> const *indicators = nullptr;
-    unsigned deviceId = 0;
     unsigned sleepBegin = 0;
     unsigned sleepTime = 0;
+    String key;
+    bool offline = true;
+    unsigned deviceId;
+    bool sendToSleep = false;
 };
 
 class IWorkMode {
@@ -63,6 +55,12 @@ public:
     virtual void onInit(Transmitter &transmitter) = 0;
 
     virtual void onRelease(Transmitter &transmitter) = 0;
+
+    virtual void onInit(Transmitter &transmitter, String const &parameter, int val) = 0;
+
+    virtual void onInit(Transmitter &transmitter, String const &parameter, float val) = 0;
+
+    virtual void onInit(Transmitter &transmitter, String const &parameter, bool val) = 0;
 
     virtual void onReceive(Transmitter &transmitter, String const &parameter, int val) = 0;
 
@@ -75,7 +73,11 @@ public:
 
 class Device {
 public:
-    explicit Device(String name, unsigned dId) : deviceType(std::move(name)), deviceId(dId) {
+    explicit Device(String name) : deviceType(std::move(name)) {
+    }
+
+    void setId(unsigned dId) {
+        deviceId = dId;
         transmitter.deviceId = dId;
     }
 
@@ -93,9 +95,9 @@ public:
 
     String setWorkMode(String const &workMode);
 
-    String addWorkMode(String const &workModel);
+    String addWorkMode(String const &workMode);
 
-    String addParameterIndicator(String const &name, String type, bool indicator);
+    String addParameterIndicator(String const &name, String const &type, bool indicator);
 
     void init();
 
@@ -105,12 +107,18 @@ public:
 
     unsigned sleepRemain();
 
+    void online();
+
+    void offline() {
+        transmitter.offline = true;
+    }
+
 private:
     struct WorkModeData {
         String name;
         IWorkMode *handler = nullptr;
-        std::vector<std::pair<String, DataType>> indicators;
-        std::vector<std::pair<String, DataType>> parameters;
+        std::vector<Indicator> indicators;
+        std::vector<Parameter> parameters;
     };
 
     String deviceType;
