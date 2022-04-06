@@ -10,6 +10,7 @@ String Transmitter::send() {
     String res;
     ArduinoJson::serializeJson(json, res);
     json.clear();
+
     return res;
 }
 
@@ -40,14 +41,14 @@ String Device::receive(const JsonVariantConst &val, const String &name) {
     flash.beginWrite();
     auto key = "init-" + deviceType + "-" + currentWorkMode->name + "-" + name;
     if (val.is<float>()) {
-        currentWorkMode->handler->onReceive(transmitter, name, (float) val);
-        flash.save(key, (float) val);
+        currentWorkMode->handler->onReceive(transmitter, name, val.as<float>());
+        flash.save(key, val.as<float>());
     } else if (val.is<int>()) {
-        currentWorkMode->handler->onReceive(transmitter, name, (int) val);
-        flash.save(key, (int) val);
+        currentWorkMode->handler->onReceive(transmitter, name, val.as<int>());
+        flash.save(key, val.as<int>());
     } else if (val.is<bool>()) {
-        currentWorkMode->handler->onReceive(transmitter, name, (bool) val);
-        flash.save(key, (bool) val);
+        currentWorkMode->handler->onReceive(transmitter, name, val.as<bool>());
+        flash.save(key, val.as<bool>());
     } else {
         return "type is not supported";
     }
@@ -116,11 +117,7 @@ void Device::update() {
         currentWorkMode->handler->onUpdate(transmitter);
     }
 
-    if (transmitter.sleepTime != 0) {
-
-    }
-
-    currentWorkMode->handler->onUpdate(transmitter);
+    cmd = transmitter.send();
 }
 
 void Device::release() {
@@ -130,7 +127,15 @@ void Device::release() {
 void Device::init() {
     transmitter.sleepTime = 0;
     transmitter.sleepBegin = 0;
+
+    if(physicalInit)
+    {
+        currentWorkMode->handler->onPhysicalInit(transmitter);
+        physicalInit = false;
+    }
+
     currentWorkMode->handler->onInit(transmitter);
+
     for (auto const &p: currentWorkMode->parameters) {
         auto key = "send-" + deviceType + "-" + currentWorkMode->name + "-" + p.name;
         switch (p.type) {

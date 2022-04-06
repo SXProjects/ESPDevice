@@ -2,7 +2,7 @@
 
 #include "Device.hpp"
 #include "Connection.hpp"
-#include <ESP8266HTTPClient.h>
+#include <HTTPClient.h>
 
 class HTTPConnection : public IClient {
 public:
@@ -12,8 +12,12 @@ public:
 
     String get(String const &msg) override;
 
+    String sendImage(uint8_t const* buf, size_t len) override;
+
 private:
+    WiFiClient* client = nullptr;
     HTTPClient sender;
     HTTPClient getter;
+    String path;
 };
 

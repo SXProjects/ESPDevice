@@ -22,6 +22,10 @@ bool Flash::read() {
 
         FlashData data;
         data.key = readKeyType(offset, data.type);
+        if(data.key.isEmpty())
+        {
+            return false;
+        }
         offset += data.key.length() + 5;
         if (data.type == DataType::Undefined) {
             utils::reset("Undefined data type");
@@ -83,7 +87,7 @@ std::vector<uint8_t> Flash::readFromMemoryArray(unsigned int address, DataType t
         }
 
         DataValue val = readFromMemory(address + i * typeSize, type);
-        if (i == 25) {
+        if (i == MAX_MEMORY) {
             break;
         }
 
@@ -128,7 +132,7 @@ String Flash::readKeyFromMemory(unsigned int address) {
         uint8_t c = EEPROM.read(address + i);
         if (c == '\0')
             break;
-        if (i == 25) {
+        if (i == MAX_MEMORY) {
             return {};
         }
         result += char(c);
@@ -158,7 +162,8 @@ String Flash::readKeyType(unsigned int address, DataType &type) {
     type = DataType::Undefined;
     name = readKeyFromMemory(address);
     if (name.isEmpty()) {
-        utils::reset("can't read key");
+        utils::println("can't read key");
+        return "";
     }
     type = (DataType) readFromMemory<unsigned>(address + name.length() + 1);
 
@@ -173,19 +178,18 @@ void Flash::reset() {
     }
 }
 
-std::string_view Flash::readString(const String &name) {
+char const* Flash::readString(const String &name) {
     char const *jp = nullptr;
     size_t js = 0;
     if (get(name, jp, js)) {
-        return std::string_view(jp, js + 1);
-    } else {
-        return {};
+        return jp;
     }
+    return nullptr;
 }
 
 const ArduinoJson::DynamicJsonDocument &Flash::readJson(const String &name) {
     auto str = readString(name);
-    if (!str.empty()) {
+    if (str != nullptr) {
         ArduinoJson::deserializeJson(json, str);
     } else {
         json.clear();

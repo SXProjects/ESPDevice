@@ -1,26 +1,27 @@
 #include "Diode.hpp"
+#include <Arduino.h>
 
 void Diode::update() {
     if (!delayLed && !blinkInterval) {
-        digitalWrite(diodePin, LOW);
+        //digitalWrite(diodePin, LOW);
         return;
     }
 
     if (delayLed && blinkInterval) {
-        digitalWrite(diodePin, HIGH);
+        //digitalWrite(diodePin, HIGH);
     }
 
     if (delayLed && (millis() - lastTime > delayLed)) {
         lastTime = millis();
 
         if (led_PWM >= 0) {
-            analogWrite(diodePin, led_PWM);
+            //analogWrite(diodePin, led_PWM);
 
             if (led_PWM > step) {
                 led_PWM = -step;
             }
         } else {
-            analogWrite(diodePin, -led_PWM);
+            //analogWrite(diodePin, -led_PWM);
         }
         ++led_PWM;
         return;
@@ -29,9 +30,9 @@ void Diode::update() {
     if (blinkInterval) {
         if ((millis() - lastTime > blinkInterval)) {
             lastTime = millis();
-            digitalWrite(diodePin, HIGH);
+            //digitalWrite(diodePin, HIGH);
         } else {
-            digitalWrite(diodePin, LOW);
+            //digitalWrite(diodePin, LOW);
         }
         return;
     }

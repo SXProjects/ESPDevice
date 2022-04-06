@@ -3,9 +3,15 @@
 
 namespace utils
 {
-    template<typename... Types>
-    void print(Types &&... args) {
-        (Serial.print(args), ...);
+    template<typename T>
+    void print(T &&arg) {
+        Serial.print(arg);
+    }
+
+    template<typename T, typename... Types>
+    void print(T &&arg, Types &&... args) {
+        Serial.print(arg);
+        print(args...);
     }
 
     template<typename T>
@@ -24,6 +30,6 @@ namespace utils
         Serial.println();
         Serial.println(error);
         Serial.println("resetting...");
-        ESP.reset();
+        ESP.restart();
     }
 }

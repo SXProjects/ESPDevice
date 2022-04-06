@@ -1,39 +1,47 @@
 #include "HTTPConnection.hpp"
 #include "SmartESP.hpp"
 
+#include <DHT.h>
+#define DHTPIN 15
+
+
 class NormalMode : public IWorkMode {
+    DHT dht{DHTPIN, DHT11};
+    unsigned sendInterval = 5000;
 public:
+    void onPhysicalInit(Transmitter &transmitter) override {
+        utils::println("onPhysicalInit");
+        dht.begin();
+    }
+
     void onInit(Transmitter &transmitter) override {
+        float hum = dht.readHumidity(); //Измеряем влажность
+        float temp = dht.readTemperature(); //Измеряем температуру
+
+        if(isnan(hum))
+        {
+            transmitter.transmit("humidity", 0.f);
+        } else
+        {
+            transmitter.transmit("humidity", hum);
+        }
+
+        if(isnan(temp))
+        {
+            transmitter.transmit("temperature", 0.f);
+        } else
+        {
+            transmitter.transmit("temperature", hum);
+        }
+
         utils::println("onInit");
-    }
-
-    void onRelease(Transmitter &transmitter) override {
-        utils::println("onRelease");
-    }
-
-    void onReceive(Transmitter &transmitter, const String &parameter, int val) override {
-        transmitter.transmit("SUPERMEGAINDICATOR", 228);
-        utils::println("onReceive int");
-    }
-
-    void onReceive(Transmitter &transmitter, const String &parameter, float val) override {
-        transmitter.transmit("SUPERMEGAINDICATOR", 42);
-        utils::println("onReceive float");
-    }
-
-    void onReceive(Transmitter &transmitter, const String &parameter, bool val) override {
-        transmitter.transmit("SUPERMEGAINDICATOR", 322);
-        utils::println("onReceive bool");
-    }
-
-    void onUpdate(Transmitter &transmitter) override {
-        utils::println("onUpdate");
+        transmitter.sleep(5000);
     }
 };
 
 void setup() {
-    esp.setup(new HTTPConnection, 1, 1);
-    esp.workMode<NormalMode>("thermometer", "on_time");
+    esp.setup(new HTTPConnection, 1, 2);
+    esp.workMode<NormalMode>("dht11", "send_on_time");
 }
 
 void loop() {

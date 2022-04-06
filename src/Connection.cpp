@@ -7,9 +7,10 @@ bool Connection::pair(String const &device) {
     IPAddress local_ip(1, 2, 3, 4);
     IPAddress gateway(1, 2, 3, 4);
     IPAddress subnet(255, 255, 255, 0);
-    WiFi.mode(WIFI_AP_STA);
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(device.c_str());
+    delay(2000);
     WiFi.softAPConfig(local_ip, gateway, subnet);
-    WiFi.softAP(device);
 
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
@@ -20,7 +21,7 @@ bool Connection::pair(String const &device) {
     });
     pairServer.on("/", HTTP_POST, [this]() {
         String p = pairServer.arg(0);
-        ArduinoJson::DynamicJsonDocument json(1024);
+        ArduinoJson::DynamicJsonDocument json(256);
         ArduinoJson::deserializeJson(json, p);
 
         if (json.containsKey("command_name")) {
@@ -54,6 +55,7 @@ bool Connection::pair(String const &device) {
         utils::reset("Success paired");
     });
     pairServer.begin();
+    utils::println("pair server begin");
     return true;
 }
 
@@ -92,7 +94,7 @@ String Connection::connectWifi(String const &devName) {
         port = (unsigned) (*json)["port"];
     }
 
-    WiFi.begin(ssid, password);
+    WiFi.begin(ssid.c_str(), password.c_str());
     Serial.println("Connecting to WIFI...");
 
     int i = 1;
@@ -122,8 +124,16 @@ String Connection::connectWifi(String const &devName) {
         Serial.print("IP address:\t");
         Serial.println(WiFi.localIP());
         connected = true;
-        wifiClient.connect(ip, port);
-        return ip + ":" + port + "/";
+        auto serverIp = ip;
+        utils::println("Server ip: ", serverIp, " port ", port);
+        if(wifiClient.connect(serverIp.c_str(), port))
+        {
+            return ip + ":" + port + "/";
+        } else
+        {
+            utils::println("WiFi client error");
+            return "";
+        }
     }
 
 }

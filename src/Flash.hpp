@@ -4,6 +4,7 @@
 #include <EEPROM.h>
 #include <Utils.hpp>
 #include <ArduinoJson.hpp>
+#include <vector>
 
 enum class DataType : unsigned {
     Undefined,
@@ -186,7 +187,7 @@ public:
         return false;
     }
 
-    std::string_view readString(String const &name);
+    char const* readString(String const &name);
 
     ArduinoJson::DynamicJsonDocument const &readJson(String const &name);
 

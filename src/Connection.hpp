@@ -1,5 +1,5 @@
 #pragma once
-#include <ESP8266WebServer.h>
+#include <WebServer.h>
 #include "Diode.hpp"
 #include <Flash.hpp>
 
@@ -11,6 +11,7 @@ public:
 
     virtual String get(String const &msg) = 0;
 
+    virtual String sendImage(uint8_t const* buf, size_t len) = 0;
 };
 
 class Connection
@@ -32,7 +33,7 @@ public:
 private:
     String connectWifi(String const& devName);
 
-    ESP8266WebServer pairServer {80};
+    WebServer pairServer {80};
     WiFiClient wifiClient;
     bool pairing = false;
     bool connected = false;

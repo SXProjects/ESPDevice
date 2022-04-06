@@ -19,7 +19,11 @@ public:
 private:
     void error(String const &from, String const &message, bool isGet = false);
 
-    bool message(String const &from, String const &message = "", bool isGet = false);
+    bool messageFrom(String const &from, String const &message = "", bool isGet = false);
+
+    bool message(String const &message, bool isGet = false);
+
+    bool message(bool isGet = false);
 
     bool checkJsonField(ArduinoJson::DynamicJsonDocument const &json, String const &f);
 
@@ -58,6 +62,7 @@ private:
     IClient *client = nullptr;
     std::vector<Device> devices;
     DynamicJsonDocument lastJson{512};
+    bool fatal = false;
 
 //    unsigned lastSleepTimePoint = 0;
 //    unsigned sleepTime = 0;

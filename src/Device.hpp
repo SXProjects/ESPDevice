@@ -3,7 +3,6 @@
 #include <ArduinoJson.h>
 #include "Connection.hpp"
 #include <Button.hpp>
-#include <optional>
 #include <utility>
 
 struct Indicator {
@@ -38,8 +37,16 @@ public:
         sendToSleep = true;
     }
 
+    void image(uint8_t const *buf, size_t size) {
+        imBuf = buf;
+        imSize = size;
+    }
+
 private:
     String send();
+
+    uint8_t const *imBuf = nullptr;
+    size_t imSize = 0;
 
     ArduinoJson::DynamicJsonDocument json{256};
     unsigned sleepBegin = 0;
@@ -52,23 +59,25 @@ private:
 
 class IWorkMode {
 public:
-    virtual void onInit(Transmitter &transmitter) = 0;
+    virtual void onInit(Transmitter &transmitter) {};
 
-    virtual void onRelease(Transmitter &transmitter) = 0;
+    virtual void onPhysicalInit(Transmitter &transmitter) {};
 
-    virtual void onInit(Transmitter &transmitter, String const &parameter, int val) = 0;
+    virtual void onRelease(Transmitter &transmitter) {};
 
-    virtual void onInit(Transmitter &transmitter, String const &parameter, float val) = 0;
+    virtual void onInit(Transmitter &transmitter, String const &parameter, int val) {};
 
-    virtual void onInit(Transmitter &transmitter, String const &parameter, bool val) = 0;
+    virtual void onInit(Transmitter &transmitter, String const &parameter, float val) {};
 
-    virtual void onReceive(Transmitter &transmitter, String const &parameter, int val) = 0;
+    virtual void onInit(Transmitter &transmitter, String const &parameter, bool val) {};
 
-    virtual void onReceive(Transmitter &transmitter, String const &parameter, float val) = 0;
+    virtual void onReceive(Transmitter &transmitter, String const &parameter, int val) {};
 
-    virtual void onReceive(Transmitter &transmitter, String const &parameter, bool val) = 0;
+    virtual void onReceive(Transmitter &transmitter, String const &parameter, float val) {};
 
-    virtual void onUpdate(Transmitter &transmitter) = 0;
+    virtual void onReceive(Transmitter &transmitter, String const &parameter, bool val) {};
+
+    virtual void onUpdate(Transmitter &transmitter) {};
 };
 
 class Device {
@@ -99,7 +108,7 @@ public:
 
     String addParameterIndicator(String const &name, String const &type, bool indicator);
 
-    String const& mode() const {
+    String const &mode() const {
         return currentWorkMode->name;
     }
 
@@ -117,6 +126,17 @@ public:
         transmitter.offline = true;
     }
 
+    String const &command() const {
+        return cmd;
+    }
+
+    void image(uint8_t const *&buf, size_t &size) {
+        buf = transmitter.imBuf;
+        size = transmitter.imSize;
+        transmitter.imBuf = nullptr;
+        transmitter.imSize = 0;
+    }
+
 private:
     struct WorkModeData {
         String name;
@@ -130,4 +150,6 @@ private:
     std::vector<WorkModeData> workModes;
     WorkModeData *currentWorkMode = nullptr;
     Transmitter transmitter;
+    String cmd;
+    bool physicalInit = true;
 };

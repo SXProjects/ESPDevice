@@ -5,7 +5,7 @@
 class Diode {
 public:
     void setup() {
-        pinMode(diodePin, OUTPUT);
+        //pinMode(diodePin, OUTPUT);
     }
 
     void blink(unsigned millis) {
