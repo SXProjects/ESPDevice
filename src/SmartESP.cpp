@@ -27,17 +27,15 @@ error(commandName, msg);\
 return false;\
 }
 
-void SmartESP::setup(IClient *newClient, unsigned int uId, unsigned v) {
-    Serial.begin(115200);
-    button.setup(21);
+void SmartESP::setup(uint8_t buttonPin, IClient *newClient, unsigned int uId, unsigned v) {
+    Serial.begin(9600);
+    button.setup(buttonPin);
     client = newClient;
     uniqueId = uId;
     version = v;
     devName = String("ESP32-") + uniqueId;
-    if(!flash.read())
-    {
+    if (!flash.read()) {
         utils::println("Fatal error, can't read config");
-        fatal = true;
     }
 }
 
@@ -49,6 +47,7 @@ bool SmartESP::workMode(String const &deviceType, String const &name, IWorkMode 
     }
     devices.push_back(Device{deviceType});
     devices.back().workMode(name, handler);
+    utils::println("New type: ", devices.back().type());
     return true;
 }
 
@@ -60,13 +59,6 @@ void SmartESP::update() {
         release();
         flash.reset();
         connection.pair(devName);
-        updated = false;
-        configured = false;
-    }
-
-    if(fatal)
-    {
-        return;
     }
 
     connection.update();
@@ -90,145 +82,50 @@ void SmartESP::update() {
         return;
     }
 
-    if (!updated) {
-        if (updateConfig()) {
-            utils::println("switching to online config");
-            updated = true;
-            configured = true;
-            offline = false;
-
-            for (auto &d: devices) {
-                d.online();
-            }
-
-            diode.smoothly(600);
-        } else if (!configured) {
-            if (flash.readString("connectInfo") == nullptr) {
-                connection.pair(devName);
-            } else {
-                if (deserializeConfig()) {
-                    utils::println("switching to offline config");
-                    diode.blink(600);
-                } else {
-                    diode.blink(100);
-                    utils::println("switching to empty configuration");
-                }
-                configured = true;
-                offline = true;
-
-                for (auto &d: devices) {
-                    d.offline();
-                }
+    for (auto &d: devices) {
+        d.setRoom(connection.getRoom());
+        utils::println("Updating: ", d.type());
+        d.update();
+        auto cmd = d.command();
+        if (!cmd.isEmpty()) {
+            if (client->send(cmd).isEmpty()) {
+                connection.connect(devName, client);
             }
         }
     }
 
-    if (updated) {
-        if (messageFrom("wakeup", R"("unique_id":)" + String(uniqueId), true)) {
-            offline = false;
+    if (millis() - lastGetTime > getInterval) {
+        lastGetTime = millis();
+        if (message(R"({"room":")" + String(connection.getRoom()) + "\"}", true)) {
             processCommand();
         } else {
-            offline = true;
-            error("wakeup", "can't update command (/commands/get)", true);
-        }
-    }
-
-    if (configured) {
-        for (auto &d: devices) {
-            d.update();
-            auto cmd = d.command();
-            if (!cmd.isEmpty()) {
-                client->send(cmd);
-                ArduinoJson::deserializeJson(lastJson, cmd);
-                if (!lastJson.containsKey("command_name") ||
-                        lastJson["command_name"] != "transmit_data") {
-                    utils::println("Server send error on transmit_data " + cmd);
-                }
-            }
-            uint8_t const *buf = nullptr;
-            size_t size = 0;
-            d.image(buf, size);
-
-            if (buf != nullptr) {
-                client->sendImage(buf, size);
-                if (!lastJson.containsKey("command_name") ||
-                        lastJson["command_name"] != "send_image") {
-                    utils::println("Server send error on send_image " + cmd);
-                }
-            }
+            error("wakeup", "can't update command (/commands/get)");
         }
     }
 }
 
-bool SmartESP::configureDevices(String const &commandName) {
-    if (!devices.empty()) {
-        error(commandName, "device already configured");
-        return false;
+void SmartESP::processCommand() {
+    if (lastJson.containsKey("receiver")) {
+        transmitData("getData");
     }
-
-    JSON_FIELD(lastJson, command_name)
-    if (j_command_name != commandName) {
-        error(commandName, "device must be configured by device_config_info");
-    }
-
-    devices.clear();
-
-    JSON_FIELD(lastJson, devices)
-
-    for (size_t d = 0; d < j_devices.size(); ++d) {
-        JSON_FIELD(j_devices[d], device_id)
-        JSON_FIELD_V(j_devices[d], name, device_type)
-        JSON_FIELD(j_devices[d], current_work_mode)
-        JSON_FIELD(j_devices[d], work_modes)
-
-        Device *dev = nullptr;
-
-        for (auto &device: devices) {
-            if (device.type() == j_device_type) {
-                device.setId(j_device_id);
-
-                dev = &device;
-            }
-        }
-
-        if (dev == nullptr) {
-            error(commandName, "device id: " + String(j_device_id) + " not found");
-            return false;
-        }
-
-        for (size_t w = 0; w < j_work_modes.size(); ++w) {
-            JSON_FIELD_V(j_work_modes[w], name, work_mode)
-            JSON_FIELD(j_work_modes[w], indicators)
-            JSON_FIELD(j_work_modes[w], parameters)
-
-            CHECK_MSG(dev->addWorkMode(j_work_mode))
-
-            for (size_t i = 0; i < j_indicators.size(); ++i) {
-                JSON_FIELD(j_indicators[i], name)
-                JSON_FIELD(j_indicators[i], type)
-                CHECK_MSG(dev->addParameterIndicator(j_name, j_type, true))
-            }
-
-            for (size_t j = 0; j < j_parameters.size(); ++j) {
-                JSON_FIELD(j_parameters[j], name)
-                JSON_FIELD(j_parameters[j], type)
-                CHECK_MSG(dev->addParameterIndicator(j_name, j_type, false))
-            }
-        }
-
-        CHECK_MSG(dev->setWorkMode(j_current_work_mode))
-    }
-
-    return messageFrom(commandName, "", true);
 }
 
-void SmartESP::error(const String &from, const String &message, bool isGet) {
+bool SmartESP::transmitData(const String &commandName) {
+    JSON_FIELD(lastJson, receiver)
+    JSON_FIELD(lastJson, parameter)
+    utils::println("transmit data from ", (char const *) j_receiver, "->",
+            (bool) j_parameter);
+
+    for (auto &d: devices) {
+        CHECK_MSG(d.receive(j_parameter, j_receiver))
+    }
+
+    return true;
+}
+
+void SmartESP::error(const String &from, const String &message) {
     String msg = R"({"command_name": ")" + from + R"(","error":")" + message + "\"}";
-    if (isGet) {
-        client->send(msg);
-    } else {
-        client->get(msg);
-    }
+    client->error(msg);
     Serial.println("Error: " + msg);
 }
 
@@ -245,16 +142,13 @@ bool SmartESP::messageFrom(const String &from, String const &json, bool isGet) {
 
 bool SmartESP::message(bool isGet) {
     String msg;
-    if(!ArduinoJson::serializeJson(lastJson, msg))
-    {
+    if (!ArduinoJson::serializeJson(lastJson, msg)) {
         utils::reset("Json message serialization error");
     }
     return message(msg, isGet);
 }
 
-bool SmartESP::message(String const &msg, bool isGet)
-{
-    utils::println("Sending message: ", msg);
+bool SmartESP::message(String const &msg, bool isGet) {
     String answer;
     if (isGet) {
         answer = client->get(msg);
@@ -263,78 +157,25 @@ bool SmartESP::message(String const &msg, bool isGet)
     }
 
     if (answer.isEmpty()) {
-        Serial.println("Server answer error");
+        Serial.println("Server empty answer");
         return false;
     } else {
         utils::println("Server answer: ", answer);
-        return ArduinoJson::deserializeJson(lastJson, answer);
+        lastJson.clear();
+        auto err = ArduinoJson::deserializeJson(lastJson, answer);
+        if (err) {
+            utils::println("Json deser err: ", err.c_str());
+        }
+        return !err;
     }
 }
 
 bool SmartESP::checkJsonField(ArduinoJson::DynamicJsonDocument const &json, String const &f) {
     if (!json.containsKey(f)) {
-        error("configureDevices", "devices is not specified");
+        error("json", "check error");
         return false;
     }
     return true;
-}
-
-void SmartESP::processCommand() {
-    if (!lastJson.containsKey("command_name")) {
-        return error("undefined", "command_name is not specified");
-    }
-
-    String commandName = (char const *) lastJson["command_name"];
-
-    if (commandName == "transmit_data") {
-        transmitData(commandName);
-    } else if (commandName == "set_work_mode") {
-        setWorkMode(commandName);
-    }
-
-    return error("undefined", "unidentified command_name");
-}
-
-bool SmartESP::transmitData(const String &commandName) {
-    JSON_FIELD(lastJson, device_id)
-    JSON_FIELD(lastJson, data)
-    FIND_DEVICE(j_device_id, dev)
-
-    for (size_t d = 0; d < j_data.size(); ++d) {
-        JSON_FIELD(j_data[d], name)
-        JSON_FIELD(j_data[d], value)
-
-        CHECK_MSG(dev->receive(j_value, j_name))
-    }
-
-    return messageFrom(commandName);
-}
-
-bool SmartESP::setWorkMode(const String &commandName) {
-    JSON_FIELD(lastJson, device_id)
-    JSON_FIELD(lastJson, work_mode);
-    FIND_DEVICE(j_device_id, dev)
-
-    dev->setWorkMode(j_work_mode);
-    return messageFrom(commandName);
-}
-
-void SmartESP::sleep(unsigned int ms) {
-    if (ms > ms * 1000 * 60 * 60 * 2) {
-        error("sleep", "ESP can't sleep longer then two hours");
-        return;
-    }
-
-    release();
-
-//    lastSleepTimePoint = timeSinceUp();
-//    sleepTime = ms;
-//
-//    if (ms >= 5 * 60 * 1000) {
-//        flash.begin();
-//        flash.writeLastSleepTimePoint(lastSleepTimePoint);
-//        ESP.deepSleep(sleepTime * 1000);
-//    }
 }
 
 Device *SmartESP::findDevice(unsigned int deviceId) {
@@ -360,41 +201,6 @@ void SmartESP::release() {
 //    return timeSinceUp() - lastSleepTimePoint;
 //}
 
-bool SmartESP::updateConfig() {
-    if (!connection.isConnected()) {
-        Serial.println("can't request config from server - device is not connected to network");
-        return false;
-    }
-
-    char const *commandName = "configure";
-
-    lastJson.clear();
-    lastJson["command_name"] = commandName;
-    lastJson["unique_id"] = uniqueId;
-    lastJson["version"] = version;
-
-    auto types = lastJson.createNestedArray("device_type");
-    for (auto const &d: devices) {
-        auto e = types.addElement();
-        e["type"] = d.type();
-        e["work_mode"] = d.mode();
-    }
-
-    if(!message(true))
-    {
-        return false;
-    }
-
-    if (lastJson.containsKey("devices")) {
-        if (configureDevices("device_config_info")) {
-            return saveConfig();
-        } else {
-            return false;
-        }
-    }
-
-    return true;
-}
 
 bool SmartESP::saveConfig() {
     String connectInfo = flash.readString("connectInfo");
@@ -402,27 +208,9 @@ bool SmartESP::saveConfig() {
     flash.beginWrite();
     flash.reset();
     flash.saveString("connectInfo", connectInfo);
-    flash.saveJson("deviceConfig", lastJson);
     flash.endWrite();
 
     return true;
-}
-
-bool SmartESP::deserializeConfig() {
-    char const *commandName = "device_config_info";
-    auto const &doc = flash.readJson("deviceConfig");
-    if (doc.isNull()) {
-        error(commandName, "can't read config from flash", true);
-        return false;
-    }
-    lastJson = doc;
-    if (configureDevices(commandName)) {
-        return true;
-    } else {
-        error(commandName, "corrupted config in memory");
-        lastJson.clear();
-        return false;
-    }
 }
 
 SmartESP esp = {};

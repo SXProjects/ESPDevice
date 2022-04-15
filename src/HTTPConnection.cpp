@@ -1,47 +1,61 @@
 #include "HTTPConnection.hpp"
 
 String HTTPConnection::send(const String &msg) {
-    if(!sender.begin(*client, "http://" + path + "data/send"))
+    utils::println("Sending parameters/send: ", msg);
+    if(!httpClient.begin(*client, "http://" + path + "parameters/send"))
     {
         return "";
     }
-    sender.addHeader("Content-Type", "application/json");
+    httpClient.addHeader("Content-Type", "application/json");
 
-    int status = sender.POST(msg);
-    sender.end();
+    int status = httpClient.POST(msg);
+    httpClient.end();
 
     if (status != 200) {
         Serial.print("http data/send error: ");
         Serial.print(status);
         Serial.print(" Error msg: ");
-        Serial.println(sender.getString());
+        Serial.println(httpClient.getString());
         diode.blink(200);
         return "";
     } else {
         diode.on();
-        return sender.getString();
+        auto answer = httpClient.getString();
+        if(answer.isEmpty())
+        {
+            return "success";
+        } else
+        {
+            return answer;
+        }
     }
 }
 
 String HTTPConnection::get(const String &msg) {
-    bool get = getter.begin(*client, "http://" + path + "command/get");
+    utils::println("Sending command/get: ", msg);
+    bool get = httpClient.begin(*client, "http://" + path + "command/get");
     if(!get)
     {
+        utils::print("No answer");
         return "";
     }
-    getter.addHeader("Content-Type", "application/json");
-    int status = getter.POST(msg);
-    getter.end();
+    httpClient.addHeader("Content-Type", "application/json");
+    int status = httpClient.POST(msg);
+    auto str = httpClient.getString();
     if (status != 200) {
         Serial.print("http command/get error: ");
         Serial.println(status);
         Serial.print("Error msg: ");
-        Serial.println(getter.getString());
+        Serial.println(httpClient.getString());
         diode.blink(200);
+        httpClient.end();
         return "";
     } else {
         diode.on();
-        return getter.getString();
+        Serial.print("Message: ");
+        Serial.println(httpClient.getString());
+        httpClient.end();
+        return str;
     }
 }
 
@@ -53,16 +67,18 @@ bool HTTPConnection::begin(String const &serverPath, WiFiClient &wifiClient) {
 
     Serial.println("HTTP INIT");
 
-    utils::println("data send path: ", "http://" + serverPath + "data/send");
+    utils::println("data send path: ", "http://" + serverPath + "parameters/send");
     utils::println("command get path: ", "http://" + serverPath + "command/get");
 
     path = serverPath;
     client = &wifiClient;
+    httpClient.setReuse(true);
 
     return true;
 }
 
 String HTTPConnection::sendImage(uint8_t const *fbBuf, size_t fbLen) {
+
     String head = "--RandomNerdTutorials\r\nContent-Disposition: form-data; name=\"imageFile\"; filename=\"esp32-cam.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n";
     String tail = "\r\n--RandomNerdTutorials--\r\n";
 
@@ -109,4 +125,12 @@ String HTTPConnection::sendImage(uint8_t const *fbBuf, size_t fbLen) {
     }
 
     return body;
+}
+
+void HTTPConnection::error(const String &msg) {
+    utils::println("Sending command/error: ", msg);
+    httpClient.begin(*client, "http://" + path + "data/sendError");
+    httpClient.addHeader("Content-Type", "application/json");
+    int status = httpClient.POST(msg);
+    httpClient.end();
 }

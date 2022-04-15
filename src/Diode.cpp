@@ -3,12 +3,12 @@
 
 void Diode::update() {
     if (!delayLed && !blinkInterval) {
-        //digitalWrite(diodePin, LOW);
+        digitalWrite(diodePin, LOW);
         return;
     }
 
     if (delayLed && blinkInterval) {
-        //digitalWrite(diodePin, HIGH);
+        digitalWrite(diodePin, HIGH);
     }
 
     if (delayLed && (millis() - lastTime > delayLed)) {

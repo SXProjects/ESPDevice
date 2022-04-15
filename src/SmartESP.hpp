@@ -4,20 +4,19 @@
 
 class SmartESP {
 public:
-    void setup(IClient *newClient, unsigned uniqueId, unsigned version);
+    void setup(uint8_t buttonPin,IClient *newClient, unsigned uniqueId, unsigned version);
 
     bool workMode(String const &deviceType, String const &name, IWorkMode *handler);
 
     template<typename T>
     bool workMode(String const &deviceType, String const &name) {
-        static T mode;
         return workMode(deviceType, name, new T);
     }
 
     void update();
 
 private:
-    void error(String const &from, String const &message, bool isGet = false);
+    void error(String const &from, String const &message);
 
     bool messageFrom(String const &from, String const &message = "", bool isGet = false);
 
@@ -54,19 +53,15 @@ private:
     String devName;
     unsigned uniqueId = -1;
     unsigned version = -1;
-    bool configured = false;
-    bool updated = false;
-    bool offline = true;
+    unsigned lastGetTime = 0;
+    unsigned getInterval = 5000;
 
     Connection connection;
     IClient *client = nullptr;
     std::vector<Device> devices;
     DynamicJsonDocument lastJson{512};
-    bool fatal = false;
+    String room;
 
-//    unsigned lastSleepTimePoint = 0;
-//    unsigned sleepTime = 0;
-//    unsigned timeSinceServerUp = 0;
 };
 
 extern SmartESP esp;

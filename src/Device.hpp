@@ -20,15 +20,19 @@ class Transmitter {
     friend class Device;
 
 public:
+
+
     template<typename T>
     void transmit(String const &indicator, T val) {
-        if (offline) {
-            flash.beginWrite();
-            flash.save(key + indicator, val);
-            flash.endWrite();
-        }
-        json["data"]["name"] = indicator;
-        json["data"]["value"] = val;
+//        if (offline) {
+//            flash.beginWrite();
+//            flash.save(key + indicator, val);
+//            flash.endWrite();
+//        }
+
+        auto elem = json["parameters"].addElement();
+        elem["data_type"] = indicator;
+        elem["data"] = val;
     }
 
     void sleep(unsigned time) {
@@ -48,6 +52,7 @@ private:
     uint8_t const *imBuf = nullptr;
     size_t imSize = 0;
 
+    String room;
     ArduinoJson::DynamicJsonDocument json{256};
     unsigned sleepBegin = 0;
     unsigned sleepTime = 0;
@@ -55,6 +60,7 @@ private:
     bool offline = true;
     unsigned deviceId;
     bool sendToSleep = false;
+    bool firstInit = true;
 };
 
 class IWorkMode {
@@ -90,6 +96,28 @@ public:
         transmitter.deviceId = dId;
     }
 
+    void setRoom(String const& home)
+    {
+        transmitter.room = home;
+    }
+
+    bool hasParameter(String const& param)
+    {
+        for (auto const& p : workModes.front().parameters)
+        {
+            if(p.name == param)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    String getRoom()
+    {
+        return transmitter.room;
+    }
+
     String const &type() const {
         return deviceType;
     }
@@ -109,7 +137,7 @@ public:
     String addParameterIndicator(String const &name, String const &type, bool indicator);
 
     String const &mode() const {
-        return currentWorkMode->name;
+        return workModes[currentWorkMode].name;
     }
 
     void init();
@@ -148,7 +176,7 @@ private:
     String deviceType;
     unsigned deviceId;
     std::vector<WorkModeData> workModes;
-    WorkModeData *currentWorkMode = nullptr;
+    size_t currentWorkMode = 0;
     Transmitter transmitter;
     String cmd;
     bool physicalInit = true;

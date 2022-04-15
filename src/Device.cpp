@@ -5,8 +5,7 @@ String Transmitter::send() {
     if (json.isNull()) {
         return {};
     }
-    json["command_name"] = "transmit_data";
-    json["device_id"] = deviceId;
+    json["room"] = room;
     String res;
     ArduinoJson::serializeJson(json, res);
     json.clear();
@@ -32,47 +31,24 @@ bool Device::workMode(const String &name, IWorkMode *handler) {
             return false;
         }
     }
+    utils::println("adding work mode: ", name);
     workModes.push_back({name, handler});
-    currentWorkMode = &workModes[0];
+    currentWorkMode = 0;
     return false;
 }
 
 String Device::receive(const JsonVariantConst &val, const String &name) {
-    flash.beginWrite();
-    auto key = "init-" + deviceType + "-" + currentWorkMode->name + "-" + name;
+    auto key = "init-" + deviceType + "-" + workModes[currentWorkMode].name + "-" + name;
     if (val.is<float>()) {
-        currentWorkMode->handler->onReceive(transmitter, name, val.as<float>());
-        flash.save(key, val.as<float>());
+        workModes[currentWorkMode].handler->onReceive(transmitter, name, val.as<float>());
     } else if (val.is<int>()) {
-        currentWorkMode->handler->onReceive(transmitter, name, val.as<int>());
-        flash.save(key, val.as<int>());
+        workModes[currentWorkMode].handler->onReceive(transmitter, name, val.as<int>());
     } else if (val.is<bool>()) {
-        currentWorkMode->handler->onReceive(transmitter, name, val.as<bool>());
-        flash.save(key, val.as<bool>());
+        workModes[currentWorkMode].handler->onReceive(transmitter, name, val.as<bool>());
     } else {
         return "type is not supported";
     }
-    flash.endWrite();
     return "";
-}
-
-String Device::setWorkMode(const String &workMode) {
-    for (auto &wm: workModes) {
-        if (wm.name == workMode) {
-            if (wm.handler) {
-                release();
-            }
-
-            currentWorkMode = &wm;
-            transmitter.key = "send-" + deviceType + "-" + currentWorkMode->name + "-";
-
-            if (currentWorkMode->handler) {
-                init();
-            }
-            return "";
-        }
-    }
-    return "work mode is not found";
 }
 
 String Device::addParameterIndicator(const String &name, String const &type, bool indicator) {
@@ -104,8 +80,14 @@ String Device::addWorkMode(String const &name) {
 }
 
 void Device::update() {
+    if(transmitter.firstInit)
+    {
+        init();
+        transmitter.firstInit = false;
+    }
+
     if (transmitter.sendToSleep) {
-        currentWorkMode->handler->onRelease(transmitter);
+        workModes[currentWorkMode].handler->onRelease(transmitter);
         transmitter.sendToSleep = false;
     }
 
@@ -114,14 +96,14 @@ void Device::update() {
             init();
         }
     } else {
-        currentWorkMode->handler->onUpdate(transmitter);
+        workModes[currentWorkMode].handler->onUpdate(transmitter);
     }
 
     cmd = transmitter.send();
 }
 
 void Device::release() {
-    currentWorkMode->handler->onRelease(transmitter);
+    workModes[currentWorkMode].handler->onRelease(transmitter);
 }
 
 void Device::init() {
@@ -130,37 +112,11 @@ void Device::init() {
 
     if(physicalInit)
     {
-        currentWorkMode->handler->onPhysicalInit(transmitter);
+        workModes[currentWorkMode].handler->onPhysicalInit(transmitter);
         physicalInit = false;
     }
 
-    currentWorkMode->handler->onInit(transmitter);
-
-    for (auto const &p: currentWorkMode->parameters) {
-        auto key = "send-" + deviceType + "-" + currentWorkMode->name + "-" + p.name;
-        switch (p.type) {
-            case DataType::Float:
-                float f;
-                if (flash.get(key, f)) {
-                    currentWorkMode->handler->onInit(transmitter, p.name, f);
-                }
-                break;
-            case DataType::Int:
-                int i;
-                if (flash.get(key, i)) {
-                    currentWorkMode->handler->onInit(transmitter, p.name, i);
-                }
-                break;
-            case DataType::Bool:
-                bool b;
-                if (flash.get(key, b)) {
-                    currentWorkMode->handler->onInit(transmitter, p.name, b);
-                }
-                break;
-            default:
-                break;
-        }
-    }
+    workModes[currentWorkMode].handler->onInit(transmitter);
 }
 
 unsigned Device::sleepRemain() {
@@ -170,39 +126,5 @@ unsigned Device::sleepRemain() {
     } else {
         return transmitter.sleepTime - timeElapsed;
     }
-}
-
-void Device::online() {
-    for (auto const &p: currentWorkMode->indicators) {
-        auto key = "init-" + deviceType + "-" + currentWorkMode->name + "-" + p.name;
-
-        switch (p.type) {
-            case DataType::Float:
-                float f;
-                if (flash.get(key, f)) {
-                    transmitter.transmit(currentWorkMode->name, f);
-                    flash.clear<float>(key);
-                }
-                break;
-            case DataType::Int:
-                int i;
-                if (flash.get(key, i)) {
-                    transmitter.transmit(currentWorkMode->name, i);
-                    flash.clear<int>(key);
-                }
-                break;
-            case DataType::Bool:
-                bool b;
-                if (flash.get(key, b)) {
-                    transmitter.transmit(currentWorkMode->name, b);
-                    flash.clear<bool>(key);
-                }
-                break;
-            default:
-                break;
-        }
-
-    }
-    transmitter.offline = false;
 }
 

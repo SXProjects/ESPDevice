@@ -11,6 +11,8 @@ public:
 
     virtual String get(String const &msg) = 0;
 
+    virtual void error(String const &msg) = 0;
+
     virtual String sendImage(uint8_t const* buf, size_t len) = 0;
 };
 
@@ -30,6 +32,11 @@ public:
         return pairing;
     }
 
+    String getRoom() const
+    {
+        return room;
+    }
+
 private:
     String connectWifi(String const& devName);
 
@@ -41,5 +48,6 @@ private:
     String ssid;
     String password;
     String ip;
+    String room;
     unsigned port;
 };

@@ -132,7 +132,7 @@ String Flash::readKeyFromMemory(unsigned int address) {
         uint8_t c = EEPROM.read(address + i);
         if (c == '\0')
             break;
-        if (i == MAX_MEMORY) {
+        if (i == 20) {
             return {};
         }
         result += char(c);

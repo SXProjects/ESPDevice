@@ -2,6 +2,7 @@
 
 bool Connection::pair(String const &device) {
     diode.smoothly(3000);
+    utils::println("pairing...");
     pairing = true;
 
     IPAddress local_ip(1, 2, 3, 4);
@@ -9,8 +10,11 @@ bool Connection::pair(String const &device) {
     IPAddress subnet(255, 255, 255, 0);
     WiFi.mode(WIFI_AP);
     WiFi.softAP(device.c_str());
+    utils::println("AP: ", device.c_str());
     delay(2000);
+    utils::println("AP config");
     WiFi.softAPConfig(local_ip, gateway, subnet);
+    utils::println("AP done");
 
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
@@ -38,7 +42,7 @@ bool Connection::pair(String const &device) {
         }
 
         if (!(json.containsKey("ssid") && json.containsKey("password") &&
-                json.containsKey("ip") && json.containsKey("port"))) {
+                json.containsKey("ip") && json.containsKey("port") && json.containsKey("room"))) {
             pairServer.send(400, "application/json",
                     R"({"error":"invalid config"})");
             return;
@@ -83,7 +87,7 @@ String Connection::connectWifi(String const &devName) {
         json = &flash.readJson("connectInfo");
 
         if (!(json->containsKey("ssid") && json->containsKey("password") &&
-                json->containsKey("ip") && json->containsKey("port"))) {
+                json->containsKey("ip") && json->containsKey("port")&& json->containsKey("room"))) {
             utils::println("Connection config invalid or not exists");
             pair(devName);
             return {};
@@ -92,6 +96,8 @@ String Connection::connectWifi(String const &devName) {
         password = (char const *) (*json)["password"];
         ip = (char const *) (*json)["ip"];
         port = (unsigned) (*json)["port"];
+        room = (char const*) (*json)["room"];
+        utils::println("Room: ", room);
     }
 
     WiFi.begin(ssid.c_str(), password.c_str());
